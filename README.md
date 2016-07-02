@@ -1,4 +1,4 @@
-# openevse-wifi-esp8266-ui
+# OpenEVSE-WiFi-esp8266-ui
 A simple HTML only user interface for the OpenEVSE project based on the ESP8266 and RAPI commands.
 This repository contains the source for both the OpenEVSE controller and ESP8266 boards.  This is based off of the development version 4.3.2 from lincomatic/open_evse code (only included the modified files here, you will need download the rest from lincomatic's repository) and the master version of chris1howell/OpenEVSE_RAPI_WIFI_ESP8266.
 Used development version because it has a nice feature for solar charging and control i.e. the pilot adjust has the option of not saving to EEPROM.
