@@ -188,7 +188,7 @@ TempMonitor g_TempMonitor;
 #endif // TEMPERATURE_MONITORING
 
 #ifdef KWH_RECORDING
-unsigned long g_WattHours_accumulated;
+unsigned long g_WattHours_accumulated = 0;  //bhc
 unsigned long g_WattSeconds;
 #endif // KWH_RECORDING
 

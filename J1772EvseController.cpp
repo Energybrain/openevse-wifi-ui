@@ -277,10 +277,10 @@ void J1772EVSEController::chargingOff()
 #endif
 
 #ifdef KWH_RECORDING  //bhc
-if (!m_WatthoursAccumulatedSaved){     // write new total if not already saved  //bhc
-  g_WattHours_accumulated = g_WattHours_accumulated + (g_WattSeconds / 3600); //bhc
-  eeprom_write_dword((uint32_t*)EOFS_KWH_ACCUMULATED,g_WattHours_accumulated); //bhc
-  m_WatthoursAccumulatedSaved = 1; //bhc
+  if (!m_WatthoursAccumulatedSaved && !g_WattHours_accumulated){     // write new total if not already saved  //bhc
+    g_WattHours_accumulated = g_WattHours_accumulated + (g_WattSeconds / 3600); //bhc
+    eeprom_write_dword((uint32_t*)EOFS_KWH_ACCUMULATED,g_WattHours_accumulated); //bhc
+    m_WatthoursAccumulatedSaved = 1; //bhc
   } //bhc
 #endif // KWH_RECORDING  //bhc
 } 
@@ -458,9 +458,6 @@ void J1772EVSEController::Enable()
     m_PrevEvseState = EVSE_STATE_DISABLED;
     m_EvseState = EVSE_STATE_UNKNOWN;
     m_Pilot.SetState(PILOT_STATE_P12);
-#ifdef KWH_RECORDING   // Reset the Wh when enabled //bhc
-    g_WattSeconds = 0; //bhc
-#endif //bhc
   }
 }
 
