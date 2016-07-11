@@ -412,7 +412,7 @@ void handleAdvanced(){
   s += "<P><FONT FACE='Arial'><FONT SIZE=4>Service level is set to <INPUT TYPE=RADIO NAME='service_level' VALUE='auto'";
   if (!(evse_flag & 0x0020)) // auto detect disabled flag
     s += " CHECKED";
-  s += ">auto detect&nbsp; <INPUT TYPE=RADIO NAME='service_level' VALUE='1'";
+  s += ">Auto Detect&nbsp; <INPUT TYPE=RADIO NAME='service_level' VALUE='1'";  //bhc
   if ((evse_flag & 0x0021) == 0x0020)
     s += " CHECKED";
   s += ">1&nbsp; <INPUT TYPE=RADIO NAME='service_level' VALUE='2'";
@@ -1015,7 +1015,7 @@ void handleHome() {
       evse_state = sFirst.toInt();
       if (evse_state == 3){
         sSecond = rapiString.substring(rapiString.lastIndexOf(' ') + 1,rapiString.indexOf('^'));  // seconds charging
-        second = sSecond.toInt()/60;
+        second = sSecond.toInt()/60; //convert to minutes
       }
     }
   }
@@ -1031,7 +1031,10 @@ void handleHome() {
     case 3:
       sFirst = "<SPAN STYLE='background-color: #0032FF'><FONT color=FFFFFF>&nbsp;charging&nbsp;</FONT></SPAN> for ";    // vehicle state C - blue
       sFirst += second;
-      sFirst += "&nbsp;minutes ";
+      if (second == 1)   // bhc
+        sFirst += "&nbsp;minute ";
+      else
+        sFirst += "&nbsp;minutes ";
       break;
     case 4:
       sFirst = "<SPAN STYLE='background-color: #FFB900'&nbsp;venting&nbsp;required&nbsp;</SPAN>";          // vehicle state D - amber
@@ -1056,9 +1059,9 @@ void handleHome() {
       break;
     case 254:
       if (timer_enabled)
-         sFirst = "<SPAN STYLE='background-color: #FFFF80'>&nbsp;waiting for timer&nbsp;</SPAN>";  // yellow
+         sFirst = "<SPAN STYLE='background-color: #C880FF'>&nbsp;waiting for timer&nbsp;</SPAN>";  // purple     //bhc
       else
-         sFirst = "<SPAN STYLE='background-color: #FFFF80'>&nbsp;sleeping&nbsp;</SPAN>";  // yellow 
+         sFirst = "<SPAN STYLE='background-color: #9680FF'>&nbsp;sleeping&nbsp;</SPAN>";  // purplish 
       sleep = 1;   
       break;
     case 255:
@@ -1147,18 +1150,18 @@ void handleHome() {
         evsetemp3 = (evsetemp3/10)*9/5 + 32;        // convert to F
     }
   } 
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Internal temperatures ";
+  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Internal temperature(s): ";  //bhc
   if (evsetemp1 != 0){
     s += evsetemp1;
-    s += "&deg;F&nbsp;&nbsp;&nbsp;";
+    s += "&deg;F&nbsp;&nbsp;"; //bhc
   }
   if (evsetemp2 != 0){
     s += evsetemp2;
-    s += "&deg;F&nbsp;&nbsp;&nbsp;";
+    s += "&deg;F&nbsp;&nbsp;";  //bhc
   }  
   if (evsetemp3 != 0){
     s += evsetemp3;
-    s += "&deg;F&nbsp;&nbsp;&nbsp;";
+    s += "&deg;F&nbsp;&nbsp";  //bhc
   }
   s += "</FONT></FONT></P>";
 
@@ -1189,7 +1192,7 @@ void handleHome() {
   while(Serial.available()) {
     String rapiString = Serial.readStringUntil('\r');
     if ( rapiString.startsWith("$OK") ) {
-      sFirst = rapiString.substring(rapiString.indexOf(' '),rapiString.indexOf('^'));      //  1/15th of a minute
+      sFirst = rapiString.substring(rapiString.indexOf(' '),rapiString.indexOf('^'));      //  in 15 minutes increments  //bhc
       first = sFirst.toInt();
     }
   }
@@ -1197,19 +1200,35 @@ void handleHome() {
   s += "<FORM METHOD='get' ACTION='homeR'>";
   s += "<P><FONT FACE='Arial'><FONT SIZE=4>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;time limit is set to ";
   s += "<SELECT name='timelimit'>";
-  for (int index = 0; index <= 63; index++){
+  int found_default = 0;  //bhc
+  for (int index = 0; index <= 62; index++){   // drop down at 30 min increments
      if (index == 0 ){
-       if (first == 0)
+       if (first == 0){
          s += "<OPTION value='" + String(index) + "'SELECTED>" + "no&nbsp;limit</OPTION>";
+         found_default = 1;
+       }
        else
          s += "<OPTION value='" + String(index) + "'>" +  "no&nbsp;limit</OPTION>";
      }
-     else
-       if (first == (index*4))
-         s += "<OPTION value='" + String(index*4) + "'SELECTED>" + String(index*4) + " hours</OPTION>";
+     else{    
+       if (first == (index*2)){
+         s += "<OPTION value='" + String(index*2) + "'SELECTED>"; 
+         found_default = 1;
+       }
        else
-         s += "<OPTION value='" + String(index*4) + "'>" + String(index*4) + " hours</OPTION>";
+         s += "<OPTION value='" + String(index*2) + "'>";
+       if (index == 1)
+         s += String(index * 30) + " minutes</OPTION>";
+       else if (index == 2)
+         s += String(index/2) + " hour</OPTION>";
+       else if (index%2 == 0)  
+         s += String(index/2) + " hours</OPTION>";
+       else
+         s += String(index/2) + ".5" + " hours</OPTION>";
+     }
   }
+  if (!found_default)
+    s += "<OPTION value='" + sFirst + "'SELECTED>" + String(first*15) + " minutes</OPTION>";
   s += "</SELECT></FONT></FONT></P>";
   
 // get energy limit
@@ -1227,19 +1246,26 @@ void handleHome() {
   }
   s += "<P><FONT FACE='Arial'><FONT SIZE=4>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;charge limit is set to ";
   s += "<SELECT name='chargelimit'>";
+  found_default = 0;  //bhc
   for (int index = 0; index <= 60; index++){
      if (index == 0 ){
-       if (first == 0)
+       if (first == 0){               
+         found_default = 1;
          s += "<OPTION value='" + String(index) + "'SELECTED>" + "no&nbsp;limit</OPTION>";
+       }
        else
          s += "<OPTION value='" + String(index) + "'>" +  "no&nbsp;limit</OPTION>";
      }
      else
-       if (first == (index*2))
+       if (first == (index*2)){
+         found_default = 1;
          s += "<OPTION value='" + String(index*2) + "'SELECTED>" + String(index*2) + " kWh</OPTION>";
+       }
        else
          s += "<OPTION value='" + String(index*2) + "'>" + String(index*2) + " kWh</OPTION>";
   }
+  if (!found_default)
+    s += "<OPTION value='" + sFirst + "'SELECTED>" + sFirst + " kWh</OPTION>";
   s += "</SELECT></FONT></FONT></P>";
 
   //get min max current allowable
