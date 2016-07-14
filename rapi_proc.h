@@ -129,7 +129,7 @@ SO ambientthresh irthresh - set Overtemperature thresholds
 SR 0|1 - disable/enable stuck relay check
  $SR 0*19
  $SR 1*1A
-SS 0|1 - disable/enable GFI self-test
+SS 0|1 - disable/enable GFI self-test   //removed because same as SF  //bhc
  $SS 0*1A
  $SS 1*1B
 ST starthr startmin endhr endmin - set timer
@@ -166,6 +166,8 @@ GG - get charging current and voltage
 GH - get cHarge limit
  response: OK kWh
  kWh = 0 = no charge limit
+GL - get volatile flags    //bhc
+ response: OK flags(hex)  //bhc
 GM - get voltMeter settings
  response: OK voltcalefactor voltoffset
  $GM^2E
@@ -209,9 +211,9 @@ T0 amps - set fake charging current
 #ifdef RAPI
 
 #ifdef RAPI_RESPONSE_CHK
-#define RAPIVER "2.0.3b"   //bhc added b 
+#define RAPIVER "2.0.3c"   //bhc added c
 #else
-#define RAPIVER "1.0.5b"   //bhc added b
+#define RAPIVER "1.0.5c"   //bhc added c
 #endif
 
 #define WIFI_MODE_AP 0

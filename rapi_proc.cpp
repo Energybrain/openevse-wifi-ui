@@ -372,14 +372,14 @@ int EvseRapiProcessor::processCmd()
       }
       break;
 #endif // ADVPWR      
-#ifdef GFI_SELFTEST
+/* #ifdef GFI_SELFTEST
     case 'S': // GFI self-test
       if (tokenCnt == 2) {
 	g_EvseController.EnableGfiSelfTest(*tokens[1] == '0' ? 0 : 1);
 	rc = 0;
       }
       break;
-#endif // GFI_SELFTEST   
+#endif // GFI_SELFTEST   */  //removed because it appears to be a duplicate of F above //bhc
 #ifdef DELAYTIMER     
     case 'T': // timer
       if (tokenCnt == 5) {
@@ -474,7 +474,13 @@ int EvseRapiProcessor::processCmd()
       bufCnt = 1; // flag response text output
       rc = 0;
       break;
-#endif // CHARGE_LIMIT
+#endif // CHARGE_LIMIT 
+    case 'L': // get volatile settings //bhc
+      u1.u = g_EvseController.GetVFlags();  //bhc
+      sprintf(buffer,"%02x",u1.u); //bhc
+      bufCnt = 1; // flag response text output
+      rc = 0; //bhc
+      break; //bhc
 #ifdef VOLTMETER
     case 'M':
       u1.i = g_EvseController.GetVoltScaleFactor();

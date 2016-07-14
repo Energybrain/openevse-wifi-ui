@@ -842,7 +842,9 @@ void J1772EVSEController::Init()
 #ifdef GFI
   m_Gfi.Init();
 #endif // GFI
+#ifdef KWH_RECORDING    //bhc
   m_WatthoursAccumulatedSaved = 1;  //prevents EEPROM write for chargingOff call. At this point the accumlated kWh have not been read out of EEPROM so it could have a zero value //bhc
+#endif // KWH_RECORDING  //bhc  
   chargingOff();
 
   m_Pilot.Init(); // init the pilot

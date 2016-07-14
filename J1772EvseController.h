@@ -203,6 +203,7 @@ public:
   void LoadThresholds();
 
   uint16_t GetFlags() { return m_wFlags; }
+  uint8_t GetVFlags() { return m_bVFlags; }  //get the volatile flags //bhc
   uint8_t GetState() { 
     return m_EvseState; 
   }
