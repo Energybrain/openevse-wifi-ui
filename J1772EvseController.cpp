@@ -277,7 +277,7 @@ void J1772EVSEController::chargingOff()
 #endif
 
 #ifdef KWH_RECORDING  //bhc
-  if (!m_WatthoursAccumulatedSaved && !g_WattHours_accumulated){     // write new total if not already saved  //bhc
+  if (!m_WatthoursAccumulatedSaved && g_WattHours_accumulated){     // write new total if not already saved  //bhc
     g_WattHours_accumulated = g_WattHours_accumulated + (g_WattSeconds / 3600); //bhc
     eeprom_write_dword((uint32_t*)EOFS_KWH_ACCUMULATED,g_WattHours_accumulated); //bhc
     m_WatthoursAccumulatedSaved = 1; //bhc
