@@ -1019,6 +1019,19 @@ void handleHome() {
       }
     }
   }
+  // get volatile flag   //start bhc
+  delay(100);
+  Serial.flush();
+  Serial.println("$GL^2F");
+  delay(100);
+  int vflag = 0;
+  while(Serial.available()) {
+    String rapiString = Serial.readStringUntil('\r');
+    if ( rapiString.startsWith("$OK") ) {
+      sFirst = rapiString.substring(rapiString.indexOf(' '));    // volatile flag
+      vflag = (int)strtol(&sFirst[1], NULL, 16);   
+    }
+  }     //end bhc
   int sleep = 0;
   int evse_disabled = 0;
   switch (evse_state){
@@ -1058,14 +1071,16 @@ void handleHome() {
       sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58; over&nbsp;temperature shutdown&nbsp;</FONT></SPAN>";
       break;
     case 254:
-      if (timer_enabled)
-         sFirst = "<SPAN STYLE='background-color: #C880FF'>&nbsp;waiting for timer&nbsp;</SPAN>";  // purple     //bhc
+      if (vflag & 0x04) //SetLimitSleep state //bhc
+         sFirst = "<SPAN STYLE='background-color: #FFA0FF'>&nbsp;charge/time limit reached&nbsp;</SPAN>";  // pink purple     //bhc
+      else if (timer_enabled)
+         sFirst = "<SPAN STYLE='background-color: #C880FF'>&nbsp;waiting for start time&nbsp;</SPAN>";  // purple     //bhc
       else
-         sFirst = "<SPAN STYLE='background-color: #9680FF'>&nbsp;sleeping&nbsp;</SPAN>";  // purplish 
+         sFirst = "<SPAN STYLE='background-color: #9680FF'>&nbsp;sleeping&nbsp;</SPAN>";  // purplish  //bhc
       sleep = 1;   
       break;
     case 255:
-      sFirst = "<SPAN STYLE='background-color: #FF80FF'>&nbsp;disabled&nbsp;</SPAN>";  // violet
+      sFirst = "<SPAN STYLE='background-color: #FF80FF'>&nbsp;disabled&nbsp;</SPAN>";  // violet   //bhc
       evse_disabled = 1;
       break;
     default:
