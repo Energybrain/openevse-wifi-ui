@@ -78,6 +78,7 @@ typedef uint8_t (*EvseStateTransitionReqFunc)(uint8_t curPilotState,uint8_t newP
 #define ECVF_AUTOSVCLVL_SKIPPED 0x01 // auto svc level test skipped during post
 #define ECVF_HARD_FAULT         0x02 // in non-autoresettable fault
 #define ECVF_LIMIT_SLEEP        0x04 // currently sleeping after reaching time/charge limit
+#define ECVF_CONNECTED          0X08 // plugged in EV  //bhc
 #define ECVF_AMMETER_CAL        0x10 // ammeter calibration mode
 #define ECVF_NOGND_TRIPPED      0x20 // no ground has tripped at least once
 #define ECVF_CHARGING_ON        0x40 // charging relay is closed
@@ -380,6 +381,14 @@ public:
   void SetStateTransitionReqFunc(EvseStateTransitionReqFunc statetransitionreqfunc) {
     m_StateTransitionReqFunc = statetransitionreqfunc;
   }
+  void SetConnectedFlag(uint8_t tf) {   //bhc
+    if (tf) { //bhc
+      m_bVFlags |= ECVF_CONNECTED; //bhc
+    } //bhc
+    else { //bhc
+      m_bVFlags &= ~ECVF_CONNECTED; //bhc
+    } //bhc
+  } //bhc
 };
 
 #ifdef FT_ENDURANCE

@@ -38,7 +38,7 @@
 #include "WProgram.h" // shouldn't need this but arduino sometimes messes up and puts inside an #ifdef
 #endif // ARDUINO
 
-#define VERSION "D4.3.2d"     //bhc
+#define VERSION "D4.3.2e"     //bhc
 
 #include "Language_default.h"   //Default language should always be included as bottom layer
 
@@ -50,7 +50,7 @@
 //-- begin features
 
 // show disabled tests before POST
-#define SHOW_DISABLED_TESTS
+//#define SHOW_DISABLED_TESTS  //bhc
 
 // current measurement
 #define AMMETER

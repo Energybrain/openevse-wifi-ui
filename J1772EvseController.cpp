@@ -1010,7 +1010,13 @@ void J1772EVSEController::Update()
   uint16_t phigh = 0xffff;
 
   unsigned long curms = millis();
-
+  
+  ReadPilot(&plow,&phigh);  //this always updates the status of the connector whether it is plugged in even if the EVSE is sleeping, diabled or faulted. used as reminder //bhc
+  if (phigh >= m_ThreshData.m_ThreshAB)   //connector disconnected //bhc
+    SetConnectedFlag(0);  //bhc
+  else
+    SetConnectedFlag(1);   //bhc
+   
   if (m_EvseState == EVSE_STATE_DISABLED) {
     m_PrevEvseState = m_EvseState; // cancel state transition
     return;
