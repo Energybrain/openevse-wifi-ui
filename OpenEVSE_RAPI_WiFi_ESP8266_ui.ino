@@ -32,9 +32,11 @@ String privateKey = "";
 String node = "";
 
 
-//SERVER strings and interfers for OpenEVSE Energy Monotoring
+//SERVER strings and interfers for OpenEVSE Energy Monotoring and backup emoncms.org
 const char* host = "data.openevse.com";
+const char* host2 = "emoncms.org";
 const char* e_url = "/emoncms/input/post.json?node=";
+const char* e_url2 = "/input/post.json?node=";
 const char* inputID_AMP   = "OpenEVSE_AMP:";
 const char* inputID_VOLT   = "OpenEVSE_VOLT:";
 const char* inputID_TEMP1   = "OpenEVSE_TEMP1:";
@@ -979,7 +981,7 @@ void handleHome() {
       sSecond = "not set&nbsp;";
   }
   s += "<FORM ACTION='datetime'>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Current date and time is <I>" + sSecond + sThird + ",&nbsp;20" + sFirst + ",&nbsp;" + sFourth + ":" + sFifth + ":" + sSixth + "&nbsp;&nbsp;</I><INPUT TYPE=SUBMIT VALUE='  Change  '></FONT></FONT></P>"; // format June 3, 2016, 14:20:34
+  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Today is <I>" + sSecond + sThird + ",&nbsp;20" + sFirst + ",&nbsp;" + sFourth + ":" + sFifth + ":" + sSixth + "&nbsp;&nbsp;</I><INPUT TYPE=SUBMIT VALUE='  Change  '></FONT></FONT></P>"; // format June 3, 2016, 14:20:34
   s += "</FORM>";
   
 // get energy usage
@@ -987,20 +989,24 @@ void handleHome() {
   Serial.flush();
   Serial.println("$GU^36");
   delay(100);
+  float session_kwh;
+  float lifetime_kwh;
   while(Serial.available()) {
     String rapiString = Serial.readStringUntil('\r');
     if ( rapiString.startsWith("$OK") ) {
       sFirst = rapiString.substring(rapiString.indexOf(' '));      // this session in Ws
       int convert = sFirst.toInt();
-      first = convert/3600000; //convert to kWh
+      first = convert/36000; //convert to 100's of kWh
+      session_kwh = float(first/100.00); //used to display 2 decimal place
       sSecond = rapiString.substring(rapiString.lastIndexOf(' ') + 1,rapiString.indexOf('^')); // lifetime in kWh
       convert = sSecond.toInt();
-      second = convert/1000;
+      second = convert/10;  //convert to 100's of kWh
+      lifetime_kwh = float(second/100.00); //used to display 2 decimal place
     }
   }
   s += "<P><FONT FACE='Arial'><FONT SIZE=4>Energy usage:</FONT></FONT></P>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;this session is " + String(first) + "&nbsp;kWh</FONT></FONT></P>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;lifetime is " + String(second) + "&nbsp;kWh</FONT></FONT></P>";
+  s += "<P><FONT FACE='Arial'><FONT SIZE=4>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;this session is " + String(session_kwh) + "&nbsp;kWh</FONT></FONT></P>";
+  s += "<P><FONT FACE='Arial'><FONT SIZE=4>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;lifetime is " + String(lifetime_kwh) + "&nbsp;kWh</FONT></FONT></P>";
   
 // get state
   delay(100);
@@ -1033,6 +1039,7 @@ void handleHome() {
     }
   }     //end bhc
   int sleep = 0;
+  int display_connected_indicator = 0; //bhc
   int evse_disabled = 0;
   switch (evse_state){
     case 1:
@@ -1051,42 +1058,52 @@ void handleHome() {
       break;
     case 4:
       sFirst = "<SPAN STYLE='background-color: #FFB900'&nbsp;venting&nbsp;required&nbsp;</SPAN>";          // vehicle state D - amber
+      display_connected_indicator = 1;  //bhc
       break;
     case 5:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58; diode&nbsp;check&nbsp;failed&nbsp;</FONT></SPAN>";  // red for erros
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58;&nbsp;diode&nbsp;check&nbsp;failed&nbsp;</FONT></SPAN>";  // red for erros
+      display_connected_indicator = 1;  //bhc
       break;
     case 6:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58; GFCI&nbsp;fault&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58;&nbsp;GFCI&nbsp;fault&nbsp;</FONT></SPAN>";
+      display_connected_indicator = 1;  //bhc
       break;
     case 7:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58; bad&nbsp;ground&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58;&nbsp;bad&nbsp;ground&nbsp;</FONT></SPAN>";
+      display_connected_indicator = 1;  //bhc
       break;
     case 8:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58; stuck&nbsp;contactor&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58;&nbsp;stuck&nbsp;contactor&nbsp;</FONT></SPAN>";
+      display_connected_indicator = 1;  //bhc
       break;
     case 9:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58; GFI&nbsp;self&#45;test&nbsp;failure&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58;&nbsp;GFI&nbsp;self&#45;test&nbsp;failure&nbsp;</FONT></SPAN>";
+      display_connected_indicator = 1;  //bhc
       break;
     case 10:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58; over&nbsp;temperature shutdown&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58;&nbsp;over&nbsp;temperature&nbsp;shutdown&nbsp;</FONT></SPAN>";
+      display_connected_indicator = 1;  //bhc
       break;
     case 254:
       if (vflag & 0x04) //SetLimitSleep state //bhc
-         sFirst = "<SPAN STYLE='background-color: #FFA0FF'>&nbsp;charge/time limit reached&nbsp;</SPAN>";  // pink purple     //bhc
+         sFirst = "<SPAN STYLE='background-color: #FFA0FF'>&nbsp;charge/time&nbsp;limit&nbsp;reached&nbsp;</SPAN>";  // pink purple     //bhc
       else if (timer_enabled)
-         sFirst = "<SPAN STYLE='background-color: #C880FF'>&nbsp;waiting for start time&nbsp;</SPAN>";  // purple     //bhc
+         sFirst = "<SPAN STYLE='background-color: #C880FF'>&nbsp;waiting&nbsp;for&nbsp;start&nbsp;time&nbsp;</SPAN>";  // purple     //bhc
       else
          sFirst = "<SPAN STYLE='background-color: #9680FF'>&nbsp;sleeping&nbsp;</SPAN>";  // purplish  //bhc
-      sleep = 1;   
+      sleep = 1;
+      display_connected_indicator = 1;  //bhc   
       break;
     case 255:
       sFirst = "<SPAN STYLE='background-color: #FF80FF'>&nbsp;disabled&nbsp;</SPAN>";  // violet   //bhc
       evse_disabled = 1;
+      display_connected_indicator = 1;  //bhc
       break;
     default:
       sFirst = "<SPAN STYLE='background-color: #FFB900'>&nbsp;unknown&nbsp;</SPAN>";  // amber
+      display_connected_indicator = 1;  //bhc
   }
-  s += "<P><FONT FACE='Arial'><FONT SIZE=5>Status is " + sFirst + "</FONT></FONT></P>";  // status line
+  s += "<P><FONT FACE='Arial'><FONT SIZE=5>Status&nbsp;is&nbsp;" + sFirst + "</FONT></FONT></P>";
   
 // get current reading
   int current_reading = 0;
@@ -1137,7 +1154,16 @@ void handleHome() {
     else
       sLevel = "1 (" + String(voltage_reading) + " V)";
   }
-  s += "<P><FONT FACE='Arial'><FONT SIZE=5>Using <B>" + String(current_reading) + "&nbsp;A</B> at Level&nbsp;" + sLevel + "</FONT></FONT></P>";
+  s += "<P><FONT FACE='Arial'><FONT SIZE=5>";
+  if (display_connected_indicator == 1){  //bhc
+    if (vflag & 0x08) //connected flag //bhc
+      s+= "&nbsp;&nbsp;&nbsp;&nbsp;and&nbsp;<SPAN STYLE='background-color: #00ff26'>&nbsp;plugged&nbsp;in&nbsp;</SPAN>";  //green plugged in //bhc
+    else //bhc
+      s+= "&nbsp;&nbsp;&nbsp;&nbsp;and&nbsp;<SPAN STYLE='background-color: #FFB900'>&nbsp;NOT&nbsp;plugged&nbsp;in&nbsp;</SPAN>";  //amber not plugged in //bhc
+  }
+  else //bhc
+    s += "Using&nbsp;<B>" + String(current_reading) + "&nbsp;A</B>";  //bhc
+  s += "&nbsp;at&nbsp;Level&nbsp;" + sLevel + "</FONT></FONT></P>"; //bhc
   
 // get temperatures
   int evsetemp1 = 0;
@@ -1349,7 +1375,9 @@ void handleHome() {
   s += "</TR></TABLE>";
   s += "</HTML>";
   s += "\r\n\r\n";
+  //Serial.println("sending page...");
   server.send(200, "text/html", s);
+  delay(1000);     //give time to display page //bhc
 }
 
 void setup() {
@@ -1395,7 +1423,7 @@ void setup() {
         WiFi.begin(esid.c_str(), epass.c_str());
         t = 0;
         attempt++;
-        if (attempt >= 1 /* bobby chung */){
+        if (attempt >= 5){
           //Serial.println();
           //Serial.print("Configuring access point...");
           WiFi.mode(WIFI_STA);
@@ -1490,16 +1518,18 @@ void setup() {
   server.on("/startimmediatelyR", handleStartImmediatelyR);
 	server.begin();
 	//Serial.println("HTTP server started");
-  delay(100);
+  delay(5000); //bhc
   Timer = millis();
 }
 
 
-
 void loop() {
 server.handleClient();
-  
-int erase = 0;  
+int erase = 0;
+int reset_timer;  //bhc
+int server_down = 0; //bhc
+int reset_timer2;  //bhc
+int server2_down = 0; //bhc
 buttonState = digitalRead(0);
 while (buttonState == LOW) {
   buttonState = digitalRead(0);
@@ -1507,18 +1537,17 @@ while (buttonState == LOW) {
   if (erase >= 5000) {
     ResetEEPROM();
     int erase = 0;
-    WiFi.disconnect();
     Serial.print("Finished...");
     delay(2000);
     ESP.reset(); 
   } 
 }
 // Remain in AP mode for 5 Minutes before resetting
-/*if (wifi_mode == 1){
+if (wifi_mode == 1){
    if ((millis() - Timer) >= 300000){
      ESP.reset();
    }
-}  bobby chung */ 
+}
  
 if (wifi_mode == 0 && privateKey != 0){
    if ((millis() - Timer) >= 30000){
@@ -1570,15 +1599,9 @@ if (wifi_mode == 0 && privateKey != 0){
       }
     } 
  
-// Use WiFiClient class to create TCP connections
-    WiFiClient client;
-    const int httpPort = 80;
-    if (!client.connect(host, httpPort)) {
-      return;
-    }
-  
-// We now create a URL for OpenEVSE RAPI data upload request
+// We now create a URL for OpenEVSE RAPI data upload request and emoncms.org
     String url = e_url;
+    String url2 = e_url2;
     String url_amp = inputID_AMP;
     url_amp += amp;
     url_amp += ",";
@@ -1612,20 +1635,52 @@ if (wifi_mode == 0 && privateKey != 0){
       url += url_temp3;
     }
     url += url_pilot;
-    // Modified by Bobby Chung next 2 lines
-    url += "}&devicekey=";
-    //url += "}&apikey=";
-    url += privateKey.c_str();
     
+    //bhc start
+    url2 = url;
+    url += "}&devicekey=";
+    url2 += "}&apikey=";
+    url += privateKey.c_str();
+//    url2 += "put your own apikey or device key"; //ecomcms.org as another server for backup
+
+// Use WiFiClient class to create TCP connections
+    WiFiClient client;
+    const int httpPort = 80;
+    
+    if (server2_down && (millis()-reset_timer2) > 600000)   //retry in 10 minutes //bhc start
+      server2_down = 0;  
+    if (!server2_down){  
+      if (!client.connect(host2, httpPort)) {
+        server2_down = 1;  
+        reset_timer2 = millis(); 
+      }
+      else{ 
+        client.print(String("GET ") + url2 + " HTTP/1.1\r\n" + "Host: " + host2 + "\r\n" + "Connection: close\r\n\r\n");
+        delay(10);
+        while(client.available()){
+          String line2 = client.readStringUntil('\r');
+        }
+      }
+    }    
+    if (server_down && (millis()-reset_timer) > 600000)   //retry in 10 minutes 
+      server_down = 0;  
+    if (!server_down){ 
+      if (!client.connect(host, httpPort)) {      
+        server_down = 1; 
+        reset_timer = millis();
+      }
+      else{
 // This will send the request to the server
-    client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: " + host + "\r\n" + "Connection: close\r\n\r\n");
-    delay(10);
-    while(client.available()){
-      String line = client.readStringUntil('\r');
+        client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: " + host + "\r\n" + "Connection: close\r\n\r\n");
+        delay(10);
+        while(client.available()){
+          String line = client.readStringUntil('\r');
+        }
+      }
     }
+    //bhc end
     //Serial.println(host);
     //Serial.println(url);
-    
   }
 }
 
