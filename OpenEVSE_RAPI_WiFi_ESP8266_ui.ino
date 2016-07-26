@@ -1179,16 +1179,16 @@ void handleHome() {
       sFirst = rapiString.substring(rapiString.indexOf(' '));
       evsetemp1 = sFirst.toInt();
       if (evsetemp1 != 0)
-        evsetemp1 = (evsetemp1/10)*9/5 + 32;        // convert to F
+        evsetemp1 = (evsetemp1*9 + 25)/50 + 32;        // convert to F  //reorder operations and added correct rounding for int math //bhc
       int firstRapiCmd = rapiString.indexOf(' ');
       sSecond = rapiString.substring(rapiString.indexOf(' ', firstRapiCmd + 1 ));
       evsetemp2 = sSecond.toInt();
       if (evsetemp2 != 0)
-        evsetemp2 = (evsetemp2/10)*9/5 + 32;        // convert to F
+        evsetemp2 = (evsetemp2*9 + 25)/50 + 32;        // convert to F  //reorder operations and added correct rounding for int math //bhc
       sThird = rapiString.substring(rapiString.lastIndexOf(' ') + 1,rapiString.indexOf('^'));
       evsetemp3 = sThird.toInt();
       if (evsetemp3 != 0)
-        evsetemp3 = (evsetemp3/10)*9/5 + 32;        // convert to F
+        evsetemp3 = (evsetemp3*9 + 25)/50 + 32;        // convert to F  //reorder operations and added correct rounding for int math //bhc
     }
   } 
   s += "<P><FONT FACE='Arial'><FONT SIZE=4>Internal temperature(s): ";  //bhc
@@ -1241,7 +1241,7 @@ void handleHome() {
   s += "<FORM METHOD='get' ACTION='homeR'>";
   s += "<P><FONT FACE='Arial'><FONT SIZE=4>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;time limit is set to ";
   s += "<SELECT name='timelimit'>";
-  int found_default = 0;  //bhc
+  int found_default = 0;  //used if current default setting doesn't match drop down for cases if changed via RAPI command //bhc
   for (int index = 0; index <= 62; index++){   // drop down at 30 min increments
      if (index == 0 ){
        if (first == 0){
@@ -1287,7 +1287,7 @@ void handleHome() {
   }
   s += "<P><FONT FACE='Arial'><FONT SIZE=4>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;charge limit is set to ";
   s += "<SELECT name='chargelimit'>";
-  found_default = 0;  //bhc
+  found_default = 0;  //used if current default setting doesn't match drop down for cases if changed via RAPI command //bhc
   for (int index = 0; index <= 60; index++){
      if (index == 0 ){
        if (first == 0){               
@@ -1329,22 +1329,29 @@ void handleHome() {
 //get pilot setting
   s += "<P><FONT FACE='Arial'><FONT SIZE=4>Maximum current setting is <B>";
   s += "<SELECT name='maxcurrent'>";
+  found_default = 0;  //used if current default setting doesn't match drop down for cases if changed via RAPI command //bhc
   if (evse_flag & 0x0001){                                  // service level flag 1 = level 2, 0 - level 1
    for (int index = minamp; index <= maxamp; index+=2){
-     if (index == pilotamp)
+     if (index == pilotamp){
        s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+       found_default = 1;  //bhc
+     }
      else
        s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
     }
   }
   else{
     for (int index = minamp; index <= maxamp; index++){
-     if (index == pilotamp)
+     if (index == pilotamp){
        s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+       found_default = 1;  //bhc
+     }
      else
        s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
     }
   }
+  if (!found_default)  //bhc
+    s += "<OPTION value='" + String(pilotamp) + "'SELECTED>" + String(pilotamp) + "</OPTION>"; //bhc
   s += "</SELECT>&nbsp;A</B></FONT></FONT></P>"; 
   s += "<P><FONT FACE='Arial'><FONT SIZE=4>EVSE: <INPUT TYPE=RADIO NAME='evse' VALUE='enable' ";
   if (!evse_disabled && !sleep) 
@@ -1641,7 +1648,8 @@ if (wifi_mode == 0 && privateKey != 0){
     url += "}&devicekey=";
     url2 += "}&apikey=";
     url += privateKey.c_str();
-//    url2 += "put your own apikey or device key"; //ecomcms.org as another server for backup
+//    url2 += "put your own apikey key here"; //ecomcms.org as another server for backup
+
 
 // Use WiFiClient class to create TCP connections
     WiFiClient client;
