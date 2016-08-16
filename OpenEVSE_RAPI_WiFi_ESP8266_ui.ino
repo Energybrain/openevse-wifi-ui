@@ -23,20 +23,27 @@
 
 ESP8266WebServer server(80);
 
+#define VERSION "1.0"  //bhc
+
 //Default SSID and PASSWORD for AP Access Point Mode
 const char* ssid = "OpenEVSE";
 //const char* ssid = "test";
 const char* password = "openevse";
-String st;
+String st = "not_scanned"; //bhc
 String privateKey = "";
-String node = "";
+String privateKey2 = "";  //bhc
+String node = "0";  //bhc
+String esid = ""; //bhc
+String epass = "";//bhc
 
+//SERVER variables for Energy Monotoring and backup 
+String host = "";   //bhc
+String host2 =  ""; //bhc
+String directory = ""; //bhc
+String directory2 = ""; //bhc
+String status_path = ""; //bhc
+const char* e_url = "input/post.json?node=";    //bhc
 
-//SERVER strings and interfers for OpenEVSE Energy Monotoring and backup emoncms.org
-const char* host = "data.openevse.com";
-const char* host2 = "emoncms.org";
-const char* e_url = "/emoncms/input/post.json?node=";
-const char* e_url2 = "/input/post.json?node=";
 const char* inputID_AMP   = "OpenEVSE_AMP:";
 const char* inputID_VOLT   = "OpenEVSE_VOLT:";
 const char* inputID_TEMP1   = "OpenEVSE_TEMP1:";
@@ -58,24 +65,173 @@ int i = 0;
 int count = 5; 
 unsigned long Timer;
 
-void ResetEEPROM(){
-  //Serial.println("Erasing EEPROM");
-  for (int i = 0; i < 512; ++i) { 
+void ResetEEPROM(int start_byte, int end_byte){//bhc
+  Serial.println("Erasing EEPROM");
+  for (int i = start_byte; i <= end_byte; ++i) { //bhc
     EEPROM.write(i, 0);
     //Serial.print("#"); 
   }
   EEPROM.commit();   
 }
 
+void handleRescan() {
+  String s;
+  s = "<HTML><FONT size='20'><FONT color=006666>Open</FONT><B>EVSE</B></FONT><P><B><Open Source Hardware</P></B><P><FONT FACE='Arial'><FONT SIZE=4>Rescanning...</P>";
+  s += "<P>Note.  You may need to manually reconnect to the access point after rescanning.</P>";  
+  s += "<P><B>Please wait at least 30 seconds before continuing.</B></P>";
+  s += "<FORM ACTION='.'>";  
+  s += "<P><INPUT TYPE=SUBMIT VALUE='Continue'></P>";
+  s += "</FORM></P>";
+  s += "</FONT></FONT></HTML>\r\n\r\n";
+  server.send(200, "text/html", s);
+  WiFi.disconnect();
+  delay(2000);  
+  ESP.reset();
+}
+void handleCfm(){
+  String s;
+  s = "<HTML><FONT size='20'><FONT color=006666>Open</FONT><B>EVSE</B></FONT><P><B>Open Source Hardware</P></B><P><FONT FACE='Arial'><FONT SIZE=4>Confirmation</P>";
+  s += "<P>You are about to erase the wireless settings and external link to your dashboard!</P>";
+  s += "<FORM ACTION='reset'>";
+  s += "&nbsp;<TABLE><TR>";
+  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Continue    '></TD>";
+  s += "</FORM><FORM ACTION='.'>";
+  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Cancel    '></TD>";
+  s += "</FORM>";
+  s += "</TR></TABLE>";
+  s += "</FONT></FONT></HTML>";
+  s += "\r\n\r\n";
+  server.send(200, "text/html", s);
+}
+
 void handleRoot() {
   String s;
-  s = "<html><font size='20'><font color=006666>Open</font><b>EVSE</b></font><p><b>Open Source Hardware</b><p>Wireless Configuration<p>Networks Found:<p>";
-        //s += ipStr;
-        s += "<p>";
-        s += st;
-        s += "<p>";
-        s += "<form method='get' action='a'><label><b><i>WiFi SSID:</b></i></label><input name='ssid' length=32><p><label><b><i>Password  :</b></i></label><input name='pass' length=64><p><label><b><i>Device Access Key:</b></i></label><input name='ekey' length=32><p><label><b><i>Node:</b></i></label><select name='node'><option value='0'>0 - Default</option><option value='1'>1</option><option value='2'>2</option><option value='3'>3</option><option value='4'>4</option><option value='5'>5</option><option value='6'>6</option><option value='7'>7</option><option value='8'>8</option><option value='9'>9</option></select><p><input type='submit'></form>";
-        s += "</html>\r\n\r\n";
+  String sTmp;
+  //Serial.println("inside root");
+  s = "<HTML><FONT size='20'><FONT color=006666>Open</FONT><b>EVSE</B></FONT><P><B>Open Source Hardware</P></B>";
+  s += "<P><FONT FACE='Arial'><FONT SIZE=5><B>Wireless Configuration</B></FONT></P>";
+  s += "<P><FONT SIZE=2>WiFi FW v";
+  s += VERSION;
+  s += "</FONT></P><FONT SIZE=4>";
+  s += "<P>================================</P>";
+  s += "<P><B>NETWORK CONNECT</B></P>";
+  s += "<FORM ACTION='rescan'>";  
+  s += "<INPUT TYPE=SUBMIT VALUE='     Rescan     '>";
+  s += "</FORM>";
+  s += "<FORM method='get' action='a'>";
+  if (wifi_mode == 0)
+    s += "<B><I>Connected to </B></I>";
+  else
+    s += "<B><I>Choose a network </B></I>";
+  s += st;
+  s += "<P><LABEL><B><I>&nbsp;&nbsp;&nbsp;&nbsp;or enter SSID manually:</B></I></LABEL><INPUT name='hssid' maxlength='32' value='empty'></P>";
+  s += "<P><LABEL><B><I>Password:</B></I></LABEL><INPUT type='password' size = '25' name='pass' maxlength='32' value='"; //bhc
+  sTmp = "";
+  for (int i = 0; i < epass.length(); ++i){     // this is to allow single quote entries to be displayed
+      if (epass[i] == '\'')
+        sTmp += "&#39;";
+      else
+        sTmp += epass[i];
+    }
+  s += sTmp.c_str();       //needs to be constant character to filter out control characters padding when read from memeory
+  s += "'></P>";
+  s += "<P>================================</P>";
+  s += "<P><B>DATABASE SERVER</B></P>";
+  if (wifi_mode != 0){
+    s += "<P>Note. You are not connected to any network so no data will be sent</P>";
+    s += "<P>out. However, you can still control your OpenEVSE by selecting (Home Page).</P>";
+    s += "<P>If you do want to send data, then please fill in the info above and (Submit).</P>";
+    s += "<P>After you successfully connected to your network,</P>";
+    s += "<P>please select (Wireless Configuration) and fill in</P>";
+    s += "<P>the appropiate information about the database server.</P>";
+  }
+  else
+    s += "<P>Fill in the appropriate information about the Emoncms server you want use.</P>";
+  s += "<P>______________</P>";
+  if (wifi_mode == 0){
+    s += "<P><B><I>Primary Server</B></I></P>";
+    s += "<P><LABEL><I>Write key (devicekey=1..32):</I></LABEL><INPUT name='ekey' maxlength='49' value='";
+    sTmp = "";
+    for (int i = 0; i < privateKey.length(); ++i){     // this is to allow single quote entries to be displayed
+      if (privateKey[i] == '\'')
+        sTmp += "&#39;";
+      else
+        sTmp += privateKey[i]; 
+    }
+    s += sTmp.c_str();     //needs to be constant character to filter out control characters padding when read from memeory
+    s += "'></P>";
+    s += "<P><LABEL><I>Server address (example.com):</I></LABEL><INPUT name='host' maxlength='31' value='";
+    sTmp = "";
+    for (int i = 0; i < host.length(); ++i){     // this is to allow single quote entries to be displayed
+      if (host[i] == '\'')
+        sTmp += "&#39;";
+      else
+        sTmp += host[i];
+    }
+    s += sTmp.c_str();    //needs to be constant character to filter out control characters padding when read from memeory
+    s += "'></P>";
+    s += "<P><LABEL><I>Database directory (/emoncms/):</I></LABEL><INPUT name='dir' maxlength='31' value='";
+    sTmp = "";
+    for (int i = 0; i < directory.length(); ++i){     // this is to allow single quote entries to be displayed
+      if (directory[i] == '\'')
+        sTmp += "&#39;";
+      else
+        sTmp += directory[i];
+    }
+    s += sTmp.c_str();    //needs to be constant character to filter out control characters padding when read from memeory
+    s += "'></P>";
+    s += "<P>_______________________</P>";   
+    s += "<P><B><I>Backup Server (optional)</B></I></P>";
+    s += "<P><LABEL><I> Write key (apikey=1..32):</I></LABEL><INPUT name='ekey2' maxlength='49' value='";
+    sTmp = "";
+    for (int i = 0; i < privateKey2.length(); ++i){     // this is to allow single quote entries to be displayed
+      if (privateKey2[i] == '\'')
+        sTmp += "&#39;";
+      else
+        sTmp += privateKey2[i];
+    }
+    s += sTmp.c_str();    //needs to be constant character to filter out control characters padding when read from memeory
+    s += "'></P>";
+    s += "<P><LABEL><I>Server address (example2.com):</I></LABEL><INPUT name='host2' mzxlength='31' value='";
+    sTmp = "";
+    for (int i = 0; i < host2.length(); ++i){     // this is to allow single quote entries to be displayed
+      if (host2[i] == '\'')
+        sTmp += "&#39;";
+      else
+        sTmp += host2[i];
+    }
+    s += sTmp.c_str();    //needs to be constant character to filter out control characters padding when read from memeory
+    s += "'></P>";  
+    s +=  "<P><LABEL><I>Database directory (/):</I></LABEL><INPUT name='dir2' maxlength='31' value='";
+    sTmp = "";
+    for (int i = 0; i < directory2.length(); ++i){     // this is to allow single quote entries to be displayed
+      if (directory2[i] == '\'')
+        sTmp += "&#39;";
+      else
+        sTmp += directory2[i];
+    }
+    s += sTmp.c_str();    //needs to be constant character to filter out control characters padding when read from memory
+    s += "'></P>";
+    s += "<P>--------</P>";
+    s += "<P><LABEL><I>Node for both servers (default is 0):</I></LABEL><SELECT name='node'>"; 
+    for (int i = 0; i <= 8; ++i){
+      s += "<OPTION value='" + String(i) + "'";
+      if (node == String(i))
+      s += "SELECTED";
+      s += ">" + String(i) + "</OPTION>";
+    }
+    s += "</SELECT></P>";
+  }  
+  s += "&nbsp;<TABLE><TR>";
+  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Submit    '></TD>";
+  s += "</FORM><FORM ACTION='home'>";
+  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Home Page   '></TD>";
+  s += "</FORM>";
+  s += "</TR></TABLE>";
+  s += "<FORM ACTION='confirm'>";  
+  s += "<P>&nbsp;<INPUT TYPE=SUBMIT VALUE='Erase Wireless Settings'></P>";
+  s += "</FORM></FONT></FONT></P>";
+  s += "</HTML>\r\n\r\n";
 	server.send(200, "text/html", s);
 }
 
@@ -83,7 +239,7 @@ void handleRapi() {
   String s;
   s = "<html><font size='20'><font color=006666>Open</font><b>EVSE</b></font><p><b>Open Source Hardware</b><p>Send RAPI Command<p>Common Commands:<p>Set Current - $SC XX<p>Set Service Level - $SL 1 - $SL 2 - $SL A<p>Get Real-time Current - $GG<p>Get Temperatures - $GP<p>";
         s += "<p>";
-        s += "<form method='get' action='r'><label><b><i>RAPI Command:</b></i></label><input name='rapi' length=32><p><input type='submit'></form>";
+        s += "<form method='get' action='r'><label><b><i>RAPI Command:</b></i></label><input name='rapi' maxlength='32'><p><input type='submit'></form>";  //bhc
         s += "</html>\r\n\r\n";
   server.send(200, "text/html", s);
 }
@@ -102,7 +258,7 @@ void handleRapiR() {
        }    
    s = "<html><font size='20'><font color=006666>Open</font><b>EVSE</b></font><p><b>Open Source Hardware</b><p>RAPI Command Sent<p>Common Commands:<p>Set Current - $SC XX<p>Set Service Level - $SL 1 - $SL 2 - $SL A<p>Get Real-time Current - $GG<p>Get Temperatures - $GP<p>";
    s += "<p>";
-   s += "<form method='get' action='r'><label><b><i>RAPI Command:</b></i></label><input name='rapi' length=32><p><input type='submit'></form>";
+   s += "<form method='get' action='r'><label><b><i>RAPI Command:</b></i></label><input name='rapi' maxlength='32'><p><input type='submit'></form>"; //bhc
    s += rapi;
    s += "<p>>";
    s += rapiString;
@@ -112,113 +268,105 @@ void handleRapiR() {
 
 void handleCfg() {
   String s;
-  String qsid = server.arg("ssid");
-  String qpass = server.arg("pass");      
-  String qkey = server.arg("ekey");
+  String qsid = server.arg("ssid");  
+  String qhsid = server.arg("hssid");   //bhc start
+  if (qhsid != "empty")  //bhc
+    qsid = qhsid;     //bhc
+  String qpass = server.arg("pass");   
+  String qkey = server.arg("ekey"); 
+  privateKey = qkey;  //bhc start
+  String qkey2 = server.arg("ekey2");
+  privateKey2 = qkey2;
   String qnode = server.arg("node");
- 
- // modified by Bobby Chung  
-  qsid.replace("+"," ");
-  qsid.replace("%20"," ");
-  qsid.replace("%21","!");
-  qsid.replace("%22","\"");
-  qsid.replace("%23","#");
-  qsid.replace("%24","$");
-  qsid.replace("%25","%");
-  qsid.replace("%26","&");
-  qsid.replace("%27","'");
-  qsid.replace("%28","(");
-  qsid.replace("%29",")");
-  qsid.replace("%2A","*");
-  qsid.replace("%2B","+");
-  qsid.replace("%2C",",");
-  qsid.replace("%2D","-");
-  qsid.replace("%2E",".");
-  qsid.replace("%2F","/");
-  qsid.replace("%3A", ";");
-  qsid.replace("%3C", "<");
-  qsid.replace("%3D", "=");
-  qsid.replace("%3E", ">");
-  qsid.replace("%3F", "?");
-  qsid.replace("%40", "@");
-  qsid.replace("%5B", "[");
-  qsid.replace("%5C", "\\");
-  qsid.replace("%5D", "]");
-  qsid.replace("%5E", "^");
-  qsid.replace("%5F", "-");
-  qsid.replace("%60", "`");
-   
-  qpass.replace("+"," ");
-  qpass.replace("%20"," ");
-  qpass.replace("%21","!");
-  qpass.replace("%23","#");
-  qpass.replace("%22","\"");
-  qpass.replace("%24","$");
-  qpass.replace("%25","%");
-  qpass.replace("%26","&");
-  qpass.replace("%27","'");
-  qpass.replace("%28","(");
-  qpass.replace("%29",")");
-  qpass.replace("%2A","*");
-  qpass.replace("%2B","+");
-  qpass.replace("%2C",",");
-  qpass.replace("%2D","-");
-  qpass.replace("%2E",".");
-  qpass.replace("%2F","/");
-  qpass.replace("%3A", ";");
-  qpass.replace("%3C", "<");
-  qpass.replace("%3D", "=");
-  qpass.replace("%3E", ">");
-  qpass.replace("%3F", "?");
-  qpass.replace("%40", "@");
-  qpass.replace("%5B", "[");
-  qpass.replace("%5C", "\\");
-  qpass.replace("%5D", "]");
-  qpass.replace("%5E", "^");
-  qpass.replace("%5F", "-");
-  qpass.replace("%60", "`");
-  
-  if (qsid != 0){
-     ResetEEPROM();
-     for (int i = 0; i < qsid.length(); ++i){
-      EEPROM.write(i, qsid[i]);
-    }
-    //Serial.println("Writing Password to Memory:"); 
-    for (int i = 0; i < qpass.length(); ++i){
+  node = qnode;
+  String qhost = server.arg("host");     
+  host = qhost;
+  String qhost2 = server.arg("host2");    
+  host2 = qhost2;
+  String qdirectory = server.arg("dir"); 
+  directory = qdirectory;
+  String qdirectory2 = server.arg("dir2");
+  directory2 = qdirectory2;
+  if (wifi_mode == 0)
+    ResetEEPROM(0,324);
+  else
+    ResetEEPROM(0,95);  // only really want to erase the SSID and Password - all others can remain for convenience
+  delay(10); 
+  for (int i = 0; i < qpass.length(); ++i){
       EEPROM.write(32+i, qpass[i]); 
     }
-    //Serial.println("Writing EMON Key to Memory:"); 
+  if (wifi_mode == 0){  
     for (int i = 0; i < qkey.length(); ++i){
       EEPROM.write(96+i, qkey[i]); 
     }
-     
-    EEPROM.write(129, qnode[i]);
+    delay(10); 
+    for (int i = 0; i < qkey2.length(); ++i){ 
+      EEPROM.write(146+i, qkey2[i]);  
+    }
+    EEPROM.write(196, qnode[0]);  
+    for (int i = 0; i < qhost.length(); ++i){ 
+      EEPROM.write(197+i, qhost[i]);  
+    }
+    delay(10); 
+    for (int i = 0; i < qhost2.length(); ++i){ 
+      EEPROM.write(229+i, qhost2[i]); 
+    }
+    for (int i = 0; i < qdirectory.length(); ++i){
+      EEPROM.write(261+i, qdirectory[i]); 
+    }
+    for (int i = 0; i < qdirectory2.length(); ++i){
+      EEPROM.write(293+i, qdirectory2[i]);  
+    }
+  }
+  if (qsid != "not chosen"){  
+    for (int i = 0; i < qsid.length(); ++i){
+      EEPROM.write(i, qsid[i]);
+    }
     EEPROM.commit();
-    s = "<html><font size='20'><font color=006666>Open</font><b>EVSE</b></font><p><b>Open Source Hardware</b><p>Wireless Configuration<p>SSID and Password<p>";
-    //s += req;
-    s += "<p>Saved to Memory...<p>Wifi will reset to join your network</html>\r\n\r\n";
-    server.send(200, "text/html", s);
-    delay(2000);
-    WiFi.disconnect();
-    ESP.reset(); 
+    delay(100);  
+    s = "<HTML><FONT size='20'><FONT color=006666>Open</FONT><B>EVSE</B></FONT><P><B>Open Source Hardware</P></B><P><FONT FACE='Arial'><FONT SIZE=4>Updating Settings...</P>";
+    if (qsid != esid.c_str() || qpass != epass.c_str()){
+      s += "<P>Saved to Memory...</P>";
+      s += "<P>The OpenEVSE will reset and try to join " + qsid + "</P>";
+      s += "<P>After about 30 seconds, if successful, please use the IP address</P>";
+      s += "<P>assigned by your DHCP server to the OpenEVSE in your Browser</P>";
+      s += "<P>in order to re-access the OpenEVSE Wireless Configuration page.</P>";
+      s += "<P>---------------------</P>";
+      s += "<P>If unsuccessful after 90 seconds, the OpenEVSE will go back to the";
+      s += "<P>default access point at SSID:OpenEVSE.</P>";
+      s += "</FONT></FONT></HTML>\r\n\r\n";
+      server.send(200, "text/html", s);
+      WiFi.disconnect();
+      delay(2000);
+      ESP.reset();       
+    }
+    else{
+      s += "<FORM ACTION='home'>";
+      s += "<P>Saved to Memory...</P>"; 
+      s += "<P><INPUT TYPE=SUBMIT VALUE='Continue'></P>";
+    }    
   }
-  else {
-     s = "<html><font size='20'><font color=006666>Open</font><b>EVSE</b></font><p><b>Open Source Hardware</b><p>Wireless Configuration<p>Networks Found:<p>";
-        //s += ipStr;
-        s += "<p>";
-        s += st;
-        s += "<p>";
-        s += "<form method='get' action='a'><label><b><i>WiFi SSID:</b></i></label><input name='ssid' length=32><p><font color=FF0000><b>SSID Required<b></font><p></font><label><b><i>Password  :</b></i></label><input name='pass' length=64><p><label><b><i>Device Access Key:</b></i></label><input name='ekey' length=32><p><label><b><i>Node:</b></i></label><select name='node'><option value='0'>0</option><option value='1'>1</option><option value='2'>2</option><option value='3'>3</option><option value='4'>4</option><option value='5'>5</option><option value='6'>6</option><option value='7'>7</option><option value='8'>8</option><option value='9'>9</option></select><p><input type='submit'></form>";
-        s += "</html>\r\n\r\n";
-     server.send(200, "text/html", s);
+  else{
+     EEPROM.commit();
+     delay(100); 
+     s = "<HTML><FONT size='20'><FONT color=006666>Open</FONT><B>EVSE</B></FONT><P><B>Open Source Hardware</P></B><P><FONT FACE='Arial'><FONT SIZE=5>Warning. No network selected.";
+     s += "<P>All functions except data logging will continue to work.</P>"; 
+     s += "<FORM ACTION='home'>";  
+     s += "<P><INPUT TYPE=SUBMIT VALUE='     OK     '></P>";
   }
+  s += "</FORM></FONT></FONT></HTML>\r\n\r\n";
+  server.send(200, "text/html", s);  //bhc end
 }
+
 void handleRst() {
   String s;
-  s = "<html><font size='20'><font color=006666>Open</font><b>EVSE</b></font><p><b>Open Source Hardware</b><p>Wireless Configuration<p>Reset to Defaults:<p>";
-  s += "<p><b>Clearing the EEPROM</b><p>";
-  s += "</html>\r\n\r\n";
-  ResetEEPROM();
+  s = "<HTML><FONT size='20'><FONT color=006666>Open</FONT><B>EVSE</B></FONT><B>Open Source Hardware</B><P><FONT FACE='Arial'><FONT SIZE=4>Wireless Configuration</P><P>Reset to Defaults:</P>";  //bhc start
+  s += "<P>Clearing the EEPROM...</P>";
+  s += "<P>The OpenEVSE will reset and have an IP address of 192.168.4.1</P>";
+  s += "<P>After about 30 seconds, the OpenEVSE will activate the access point</P>";
+  s += "<P>SSID:OpenEVSE and password:openevse</P>";       
+  s += "</FONT></FONT></HTML>\r\n\r\n"; //bhc end
+  ResetEEPROM(0,511);
   EEPROM.commit();
   server.send(200, "text/html", s);
   WiFi.disconnect();
@@ -226,12 +374,14 @@ void handleRst() {
   ESP.reset();
 }
 
-void handleStatus(){
+/*void handleStatus(){
   String s;
-  s = "<html><iframe style='width:480px; height:320px;' frameborder='0' scrolling='no' marginheight='0' marginwidth='0' src='http://data.openevse.com/emoncms/vis/rawdata?feedid=1&fill=0&colour=008080&units=W&dp=1&scale=1&embed=1'></iframe>";
+  s = "<html><iframe style='width:480px; height:320px;' frameborder='0' scrolling='yes' marginheight='0' marginwidth='0' src='";
+  s += status_path;
+  s += "'></iframe>";
   s += "</html>\r\n\r\n";
   server.send(200, "text/html", s);
-}
+}*/
 
 void handleStartImmediatelyR(){
   String s;        
@@ -264,7 +414,6 @@ void handleDelayTimer(){
   s = "<HTML>";
   s += "<FONT SIZE=6><FONT color=006666>Open</FONT><B>EVSE </B></FONT><FONT FACE='Arial'><FONT SIZE=5>Set Delay Start Timer</FONT></FONT>";  
  //get delay start timer
-  delay(100);
   Serial.flush();
   Serial.println("$GD^27");
   delay(100);
@@ -392,12 +541,12 @@ void handleDelayTimerR(){
 
 void handleAdvanced(){
   String s;
+  String sTmp;
   String sFirst;
   String sSecond;
   s = "<HTML>";
-  s += "<FONT SIZE=6><FONT color=006666>Open</FONT><B>EVSE </B></FONT><FONT FACE='Arial'><FONT SIZE=6>Advanced Menu</FONT></FONT>";  
+  s += "<FONT SIZE=6><FONT color=006666>Open</FONT><B>EVSE </B></FONT><FONT FACE='Arial'><FONT SIZE=6>Advanced Menu</FONT>";  
 //get flags
-  delay(100);
   Serial.flush();
   Serial.println("$GE^26");  // get evse flag
   delay(100);
@@ -411,71 +560,83 @@ void handleAdvanced(){
     }
   }
   s += "<FORM METHOD='get' ACTION='advancedR'>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Service level is set to <INPUT TYPE=RADIO NAME='service_level' VALUE='auto'";
+  s += "<P><FONT SIZE=4>Service level is set to <INPUT TYPE=RADIO NAME='service_level' VALUE='auto'";
   if (!(evse_flag & 0x0020)) // auto detect disabled flag
     s += " CHECKED";
-  s += ">Auto Detect&nbsp; <INPUT TYPE=RADIO NAME='service_level' VALUE='1'";  //bhc
+  s += ">Auto Detect  <INPUT TYPE=RADIO NAME='service_level' VALUE='1'";  //bhc
   if ((evse_flag & 0x0021) == 0x0020)
     s += " CHECKED";
-  s += ">1&nbsp; <INPUT TYPE=RADIO NAME='service_level' VALUE='2'";
+  s += ">1  <INPUT TYPE=RADIO NAME='service_level' VALUE='2'";
   if ((evse_flag & 0x0021) == 0x0021)
     s += " CHECKED";
-  s += ">2</FONT></FONT></P>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Diode check is set to <INPUT TYPE=RADIO NAME='diode_check' VALUE='1'";
+  s += ">2</P>";
+  
+  s += "<P>Diode check is set to <INPUT TYPE=RADIO NAME='diode_check' VALUE='1'";
   if (!(evse_flag & 0x0002)) // yes
     s += " CHECKED";
-  s += ">YES&nbsp; <INPUT TYPE=RADIO NAME='diode_check' VALUE='0'";
+  s += ">YES  <INPUT TYPE=RADIO NAME='diode_check' VALUE='0'";
   if ((evse_flag & 0x0002) == 0x0002) //no
     s += " CHECKED";
-  s += ">NO</FONT></FONT></P>";
+  s += ">NO</P>";
 
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Vent required state is set to <INPUT TYPE=RADIO NAME='vent_check' VALUE='1'";
+  s += "<P>Vent required state is set to <INPUT TYPE=RADIO NAME='vent_check' VALUE='1'";
   if (!(evse_flag & 0x0004)) // yes
     s += " CHECKED";
-  s += ">YES&nbsp; <INPUT TYPE=RADIO NAME='vent_check' VALUE='0'";
+  s += ">YES  <INPUT TYPE=RADIO NAME='vent_check' VALUE='0'";
   if ((evse_flag & 0x0004) == 0x0004) //no
     s += " CHECKED";
-  s += ">NO</FONT></FONT></P>";
+  s += ">NO</P>";
 
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Ground check is set to <INPUT TYPE=RADIO NAME='ground_check' VALUE='1'";
+  s += "<P>Ground check is set to <INPUT TYPE=RADIO NAME='ground_check' VALUE='1'";
   if (!(evse_flag & 0x0008)) // yes
     s += " CHECKED";
-  s += ">YES&nbsp; <INPUT TYPE=RADIO NAME='ground_check' VALUE='0'";
+  s += ">YES  <INPUT TYPE=RADIO NAME='ground_check' VALUE='0'";
   if ((evse_flag & 0x0008) == 0x0008) //no
     s += " CHECKED";
-  s += ">NO</FONT></FONT></P>";
+  s += ">NO</P>";
 
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Stuck relay is set to <INPUT TYPE=RADIO NAME='stuck_relay' VALUE='1'";
+  s += "<P>Stuck relay is set to <INPUT TYPE=RADIO NAME='stuck_relay' VALUE='1'";
   if (!(evse_flag & 0x0010)) // yes
     s += " CHECKED";
-  s += ">YES&nbsp; <INPUT TYPE=RADIO NAME='stuck_relay' VALUE='0'";
+  s += ">YES  <INPUT TYPE=RADIO NAME='stuck_relay' VALUE='0'";
   if ((evse_flag & 0x0010) == 0x0010) //no
     s += " CHECKED";
-  s += ">NO</FONT></FONT></P>";
+  s += ">NO</P>";
 
-  /*s += "<P><FONT FACE='Arial'><FONT SIZE=4>Auto start charging is set to <INPUT TYPE=RADIO NAME='auto_start' VALUE='1'";
+  /*s += "<P>Auto start charging is set to <INPUT TYPE=RADIO NAME='auto_start' VALUE='1'";
   if (!(evse_flag & 0x0040)) // yes
     s += " CHECKED";
-  s += ">YES&nbsp; <INPUT TYPE=RADIO NAME='auto_start' VALUE='0'";
+  s += ">YES  <INPUT TYPE=RADIO NAME='auto_start' VALUE='0'";
   if ((evse_flag & 0x0040) == 0x0040) //no
     s += " CHECKED";
-  s += ">NO</FONT></FONT></P>";*/
+  s += ">NO</P>";*/
 
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>GFI self test is set to <INPUT TYPE=RADIO NAME='gfi_check' VALUE='1'";
+  s += "<P>GFI self test is set to <INPUT TYPE=RADIO NAME='gfi_check' VALUE='1'";
   if (!(evse_flag & 0x0200)) // yes
     s += " CHECKED";
-  s += ">YES&nbsp; <INPUT TYPE=RADIO NAME='gfi_check' VALUE='0'";
+  s += ">YES  <INPUT TYPE=RADIO NAME='gfi_check' VALUE='0'";
   if ((evse_flag & 0x0200) == 0x0200) //no
     s += " CHECKED";
-  s += ">NO</FONT></FONT></P>";
+  s += ">NO</P>";
   
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>LCD backlight is set to <INPUT TYPE=RADIO NAME='lcd' VALUE='1'";
+  s += "<P>LCD backlight is set to <INPUT TYPE=RADIO NAME='lcd' VALUE='1'";
   if (!(evse_flag & 0x0100)) // yes
     s += " CHECKED";
-  s += ">RGB&nbsp; <INPUT TYPE=RADIO NAME='lcd' VALUE='0'";
+  s += ">RGB  <INPUT TYPE=RADIO NAME='lcd' VALUE='0'";
   if ((evse_flag & 0x0100) == 0x0100) //no
     s += " CHECKED";
-  s += ">Monochrome</FONT></FONT></P>";
+  s += ">Monochrome</P>";
+  s += "<P>-------------------</P>";
+  s += "<P><LABEL>External address of dashboard:</LABEL><INPUT name='stat_path' maxlength='100' value='";
+  sTmp = "";
+  for (int i = 0; i < status_path.length(); ++i){     // this is to allow single quote entries to be displayed
+      if (status_path[i] == '\'')
+        sTmp += "&#39;";
+      else
+        sTmp += status_path[i];
+    }
+  s += sTmp.c_str();
+  s += "'></FONT></FONT></P>";
   s += "&nbsp;<TABLE><TR>";
   s += "<TD><INPUT TYPE=SUBMIT VALUE='    Submit    '></TD>";
   s += "</FORM><FORM ACTION='home'>";
@@ -496,7 +657,10 @@ void handleAdvancedR(){
   String sGround = server.arg("ground_check");
   String sVent = server.arg("vent_check");
   String sLCD = server.arg("lcd");   
-  String sGFI = server.arg("gfi_check"); 
+  String sGFI = server.arg("gfi_check");
+  String sStat = server.arg("stat_path");
+  
+  status_path = sStat;  //bhc
   count = 0;     
   s = "<HTML>";
   if (sDiode == "1")
@@ -563,6 +727,12 @@ void handleAdvancedR(){
   sCommand = "$FR^30"; 
   Serial.flush();
   Serial.println(sCommand);
+  delay(100); 
+  ResetEEPROM(325,425);
+  for (int i = 0; i < sStat.length(); ++i){
+     EEPROM.write(i + 325, sStat[i]);
+    }
+  EEPROM.commit();
   delay(3000 + count*1000);
   s += "<FORM ACTION='home'>";  
   s += "<P><FONT SIZE=4><FONT FACE='Arial'>Success!</P>";
@@ -583,9 +753,8 @@ void handleDateTime(){
   String sFifth = "0";
   String sSixth = "0";
   s = "<HTML>";
-  s +="<FONT SIZE=6><FONT color=006666>Open</FONT><B>EVSE </B></FONT><FONT FACE='Arial'><FONT SIZE=5>Edit Date and Time</FONT></FONT>";  
+  s +="<FONT SIZE=6><FONT color=006666>Open</FONT><B>EVSE </B></FONT><FONT FACE='Arial'><FONT SIZE=5>Edit Date and Time</FONT>";  
  //get date and time
-  delay(100);
   Serial.flush();
   Serial.println("$GT^37");
   delay(100);
@@ -618,7 +787,7 @@ void handleDateTime(){
     }
   }
   s += "<FORM METHOD='get' ACTION='datetimeR'>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Current Date is ";
+  s += "<P><FONT SIZE=4>Current Date is ";
   s += "<SELECT name='month'><OPTION value='1'";
   if (month == 1)
     s += " SELECTED";
@@ -706,7 +875,7 @@ void handleDateTime(){
   s += "</FORM><FORM ACTION='home'>";
   s += "<TD><INPUT TYPE=SUBMIT VALUE='    Cancel    '></TD>";
   s += "</FORM>";
-  s += "</TR></TABLE>";
+  s += "</TR></FONT></FONT></TABLE>";
   s += "</HTML>";
   s += "\r\n\r\n";
   server.send(200, "text/html", s);
@@ -788,7 +957,6 @@ void handleHomeR(){
   String sEvse = server.arg("evse");   
   String sTime_limit = server.arg("timelimit");
   String sCharge_limit = server.arg("chargelimit");        
-
   s = "<HTML>";  
   String sCommand = "$SC " + sCurrent; 
   Serial.flush();
@@ -839,6 +1007,7 @@ void handleHomeR(){
 
 void handleHome() {
   String s;
+  char tmpStr[20];
   // variables for command responses
   String sFirst = "0";
   String sSecond = "0";
@@ -852,9 +1021,9 @@ void handleHome() {
   int fourth = 0;
   int fifth = 0;
   int sixth = 0;
+  IPAddress myAddress = WiFi.localIP();
   
   //get firmware version
-  delay(100);
   Serial.flush();
   Serial.println("$GV^35");
   delay(100);
@@ -868,10 +1037,22 @@ void handleHome() {
     }
   }
   s = "<HTML>";
-  s += "<FORM ACTION='home'>";
-  s += "<FONT SIZE=6><FONT color=006666>Open</FONT><B>EVSE </B></FONT><FONT FACE='Arial'><FONT SIZE=6>Home Page&nbsp;&nbsp;&nbsp;&nbsp;<INPUT TYPE=SUBMIT VALUE='   Refresh   '></FONT></FONT>";
-  s += "</FORM>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=2>Firmware version&nbsp;" + sFirst + "&nbsp;&nbsp;RAPI version&nbsp;" + sSecond + "</FONT></FONT></P>";      // Firmware and RAPI version compatibility
+  s += "<FONT SIZE=6><FONT color=006666>Open</FONT><B>EVSE </B></FONT><FONT FACE='Arial'><FONT SIZE=6>Home Page</FONT>";
+  s += "<P><FONT SIZE=2>Controller FW v" + sFirst + ",    RAPI v" + sSecond;
+  s += ",   WiFi FW v";  //bhc
+  s += VERSION; //bhc
+  s += "</P>";  // both firmware (controller and wifi) and RAPI version compatibility  //bhc
+  s += "<P>Connected to ";
+  if (wifi_mode == 0 ){  //bhc start
+    sprintf(tmpStr,"%d.%d.%d.%d",myAddress[0],myAddress[1],myAddress[2],myAddress[3]);   
+    s += esid;
+    s += " at ";
+    s += tmpStr;
+  }
+  else
+    s += "OpenEVSE at 192.168.4.1";
+  s += "</FONT></P>";   //bhc end
+  
 
 //get delay timer settings
   String sStart_hour = "?";
@@ -879,7 +1060,6 @@ void handleHome() {
   String sStop_hour = "?";
   String sStop_min = "?";
   int timer_enabled = 0;
-  delay(100);
   Serial.flush();
   Serial.println("$GD^27");
   delay(100);
@@ -909,7 +1089,6 @@ void handleHome() {
   }
   
 //get date and time
-  delay(100);
   Serial.flush();
   Serial.println("$GT^37");
   delay(100);
@@ -942,50 +1121,49 @@ void handleHome() {
   }
   switch (month){
     case 1:
-      sSecond = "January&nbsp;";
+      sSecond = "January ";
       break;
     case 2:
-      sSecond = "February&nbsp;";
+      sSecond = "February ";
       break;
     case 3:
-      sSecond = "March&nbsp;";
+      sSecond = "March ";
       break;
     case 4:
-      sSecond = "April&nbsp;";
+      sSecond = "April ";
       break;
     case 5:
-      sSecond = "May&nbsp;";
+      sSecond = "May ";
       break;
     case 6:
-      sSecond = "June&nbsp;";
+      sSecond = "June ";
       break;
     case 7:
-      sSecond = "July&nbsp;";
+      sSecond = "July ";
       break;
     case 8:
-      sSecond = "August&nbsp;";
+      sSecond = "August ";
       break;
     case 9:
-      sSecond = "September&nbsp;";
+      sSecond = "September ";
       break;
     case 10:
-      sSecond = "October&nbsp;";
+      sSecond = "October ";
       break;
     case 11:
-      sSecond = "November&nbsp;";
+      sSecond = "November ";
       break;
     case 12:
-      sSecond = "December&nbsp;";
+      sSecond = "December ";
       break;
     default:
-      sSecond = "not set&nbsp;";
+      sSecond = "not set";
   }
   s += "<FORM ACTION='datetime'>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Today is <I>" + sSecond + sThird + ",&nbsp;20" + sFirst + ",&nbsp;" + sFourth + ":" + sFifth + ":" + sSixth + "&nbsp;&nbsp;</I><INPUT TYPE=SUBMIT VALUE='  Change  '></FONT></FONT></P>"; // format June 3, 2016, 14:20:34
+  s += "<P><FONT SIZE=4>Today is <I>" + sSecond + sThird + ", 20" + sFirst + ",&nbsp;" + sFourth + ":" + sFifth + ":" + sSixth + "  </I><INPUT TYPE=SUBMIT VALUE='  Change  '></P>"; // format June 3, 2016, 14:20:34
   s += "</FORM>";
   
 // get energy usage
-  delay(100);
   Serial.flush();
   Serial.println("$GU^36");
   delay(100);
@@ -1004,12 +1182,11 @@ void handleHome() {
       lifetime_kwh = float(second/100.00); //used to display 2 decimal place
     }
   }
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Energy usage:</FONT></FONT></P>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;this session is " + String(session_kwh) + "&nbsp;kWh</FONT></FONT></P>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;lifetime is " + String(lifetime_kwh) + "&nbsp;kWh</FONT></FONT></P>";
+  s += "<P>Energy usage:</P>";
+  s += "<P>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;this session is " + String(session_kwh) + " kWh</P>";
+  s += "<P>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;lifetime is " + String(lifetime_kwh) + " kWh</P>";
   
 // get state
-  delay(100);
   Serial.flush();
   Serial.println("$GS^30");
   delay(100);
@@ -1026,7 +1203,6 @@ void handleHome() {
     }
   }
   // get volatile flag   //start bhc
-  delay(100);
   Serial.flush();
   Serial.println("$GL^2F");
   delay(100);
@@ -1041,74 +1217,77 @@ void handleHome() {
   int sleep = 0;
   int display_connected_indicator = 0; //bhc
   int evse_disabled = 0;
+  int no_current_display = 0;  //bhc
   switch (evse_state){
     case 1:
-      sFirst = "<SPAN STYLE='background-color: #00ff26'>&nbsp;not&nbsp;connected&#44;&nbsp;ready&nbsp;</SPAN>";    // vehicle state A - green
+      sFirst = "<SPAN STYLE='background-color: #00ff26'> not connected&#44; ready&nbsp;</SPAN>";    // vehicle state A - green
+      no_current_display = 1;  //bhc
       break;
     case 2:
-      sFirst = "<SPAN STYLE='background-color: #FFFF80'>&nbsp;connected&#44;&nbsp;ready&nbsp;</SPAN>";       // vehicle state B - yellow
+      sFirst = "<SPAN STYLE='background-color: #FFFF80'> connected&#44; ready&nbsp;</SPAN>";       // vehicle state B - yellow
+      no_current_display = 1;  //bhc
       break;
     case 3:
-      sFirst = "<SPAN STYLE='background-color: #0032FF'><FONT color=FFFFFF>&nbsp;charging&nbsp;</FONT></SPAN> for ";    // vehicle state C - blue
+      sFirst = "<SPAN STYLE='background-color: #0032FF'><FONT color=FFFFFF> charging&nbsp;</FONT></SPAN>&nbsp;for ";    // vehicle state C - blue
       sFirst += second;
       if (second == 1)   // bhc
-        sFirst += "&nbsp;minute ";
+        sFirst += " minute";
       else
-        sFirst += "&nbsp;minutes ";
+        sFirst += " minutes";
       break;
     case 4:
-      sFirst = "<SPAN STYLE='background-color: #FFB900'&nbsp;venting&nbsp;required&nbsp;</SPAN>";          // vehicle state D - amber
+      sFirst = "<SPAN STYLE='background-color: #FFB900' venting required&nbsp;</SPAN>";          // vehicle state D - amber
       display_connected_indicator = 1;  //bhc
       break;
     case 5:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58;&nbsp;diode&nbsp;check&nbsp;failed&nbsp;</FONT></SPAN>";  // red for erros
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF> ERROR, diode check failed&nbsp;</FONT></SPAN>";  // red for erros
       display_connected_indicator = 1;  //bhc
       break;
     case 6:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58;&nbsp;GFCI&nbsp;fault&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF> ERROR, GFCI fault&nbsp;</FONT></SPAN>";
       display_connected_indicator = 1;  //bhc
       break;
     case 7:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58;&nbsp;bad&nbsp;ground&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF> ERROR, bad ground&nbsp;</FONT></SPAN>";
       display_connected_indicator = 1;  //bhc
       break;
     case 8:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58;&nbsp;stuck&nbsp;contactor&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF> ERROR, stuck contactor&nbsp;</FONT></SPAN>";
       display_connected_indicator = 1;  //bhc
       break;
     case 9:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58;&nbsp;GFI&nbsp;self&#45;test&nbsp;failure&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF> ERROR, GFI self&#45;test failure&nbsp;</FONT></SPAN>";
       display_connected_indicator = 1;  //bhc
       break;
     case 10:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF>&nbsp;error&#58;&nbsp;over&nbsp;temperature&nbsp;shutdown&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF> ERROR, over temperature shutdown&nbsp;</FONT></SPAN>";
       display_connected_indicator = 1;  //bhc
       break;
     case 254:
       if (vflag & 0x04) //SetLimitSleep state //bhc
-         sFirst = "<SPAN STYLE='background-color: #FFA0FF'>&nbsp;charge/time&nbsp;limit&nbsp;reached&nbsp;</SPAN>";  // pink purple     //bhc
+         sFirst = "<SPAN STYLE='background-color: #FFA0FF'> charge/time limit reached&nbsp;</SPAN>";  // pink purple     //bhc
       else if (timer_enabled)
-         sFirst = "<SPAN STYLE='background-color: #C880FF'>&nbsp;waiting&nbsp;for&nbsp;start&nbsp;time&nbsp;</SPAN>";  // purple     //bhc
+         sFirst = "<SPAN STYLE='background-color: #C880FF'> waiting for start time&nbsp;</SPAN>";  // purple     //bhc
       else
-         sFirst = "<SPAN STYLE='background-color: #9680FF'>&nbsp;sleeping&nbsp;</SPAN>";  // purplish  //bhc
+         sFirst = "<SPAN STYLE='background-color: #9680FF'> sleeping&nbsp;</SPAN>";  // purplish  //bhc
       sleep = 1;
       display_connected_indicator = 1;  //bhc   
       break;
     case 255:
-      sFirst = "<SPAN STYLE='background-color: #FF80FF'>&nbsp;disabled&nbsp;</SPAN>";  // violet   //bhc
+      sFirst = "<SPAN STYLE='background-color: #FF80FF'> disabled&nbsp;</SPAN>";  // violet   //bhc
       evse_disabled = 1;
-      display_connected_indicator = 1;  //bhc
+      no_current_display = 1; //bhc
       break;
     default:
-      sFirst = "<SPAN STYLE='background-color: #FFB900'>&nbsp;unknown&nbsp;</SPAN>";  // amber
+      sFirst = "<SPAN STYLE='background-color: #FFB900'> unknown&nbsp;</SPAN>";  // amber
       display_connected_indicator = 1;  //bhc
   }
-  s += "<P><FONT FACE='Arial'><FONT SIZE=5>Status&nbsp;is&nbsp;" + sFirst + "</FONT></FONT></P>";
+  s += "<P><FONT SIZE=5>Status is&nbsp;" + sFirst + "</P>";
   
 // get current reading
   int current_reading = 0;
   int voltage_reading = -1;
-  delay(100);
+  float current_read;
   Serial.flush();
   Serial.println("$GG^24");
   delay(100);
@@ -1118,7 +1297,8 @@ void handleHome() {
       sFirst = rapiString.substring(rapiString.indexOf(' '));      // this session in mA
       sSecond = rapiString.substring(rapiString.lastIndexOf(' ') + 1,rapiString.indexOf('^'));  // voltage - not used
       int convert = sFirst.toInt();
-      current_reading = convert/1000; //convert to Amps
+      current_reading = convert/10; //convert to 100's of Amps
+      current_read = current_reading/100.0;
       convert = sSecond.toInt();
       if (convert != -1)
         voltage_reading = convert/1000; //convert to Volts
@@ -1126,7 +1306,6 @@ void handleHome() {
   }
   
 //get flags
-  delay(100);
   Serial.flush();
   Serial.println("$GE^26");
   delay(100);
@@ -1154,22 +1333,23 @@ void handleHome() {
     else
       sLevel = "1 (" + String(voltage_reading) + " V)";
   }
-  s += "<P><FONT FACE='Arial'><FONT SIZE=5>";
+  s += "<P>";
   if (display_connected_indicator == 1){  //bhc
     if (vflag & 0x08) //connected flag //bhc
-      s+= "&nbsp;&nbsp;&nbsp;&nbsp;and&nbsp;<SPAN STYLE='background-color: #00ff26'>&nbsp;plugged&nbsp;in&nbsp;</SPAN>";  //green plugged in //bhc
+      s+= "&nbsp;&nbsp;and&nbsp;<SPAN STYLE='background-color: #00ff26'> plugged in </SPAN>";  //green plugged in //bhc
     else //bhc
-      s+= "&nbsp;&nbsp;&nbsp;&nbsp;and&nbsp;<SPAN STYLE='background-color: #FFB900'>&nbsp;NOT&nbsp;plugged&nbsp;in&nbsp;</SPAN>";  //amber not plugged in //bhc
+      s+= "&nbsp;&nbsp;and&nbsp;<SPAN STYLE='background-color: #FFB900'> NOT plugged in </SPAN>";  //amber not plugged in //bhc
   }
-  else //bhc
-    s += "Using&nbsp;<B>" + String(current_reading) + "&nbsp;A</B>";  //bhc
-  s += "&nbsp;at&nbsp;Level&nbsp;" + sLevel + "</FONT></FONT></P>"; //bhc
+  else if (!no_current_display) //bhc  
+    s += "&nbsp;&nbsp;using <B>" + String(current_read) + " A</B>";  //bhc
+  else
+    s += "&nbsp;";
+  s += "&nbsp;at Level " + sLevel + "</FONT></P>"; //bhc
   
 // get temperatures
   int evsetemp1 = 0;
   int evsetemp2 = 0;
   int evsetemp3 = 0;
-  delay(100);
   Serial.flush(); 
   Serial.println("$GP^33");
   delay(100);
@@ -1191,42 +1371,44 @@ void handleHome() {
         evsetemp3 = (evsetemp3*9 + 25)/50 + 32;        // convert to F  //reorder operations and added correct rounding for int math //bhc
     }
   } 
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Internal temperature(s): ";  //bhc
+  s += "<P>Internal temperature(s)";  //bhc
   if (evsetemp1 != 0){
+    s += ":  ";
     s += evsetemp1;
-    s += "&deg;F&nbsp;&nbsp;"; //bhc
+    s += "&deg;F "; //bhc
   }
   if (evsetemp2 != 0){
+    s += ":  ";
     s += evsetemp2;
-    s += "&deg;F&nbsp;&nbsp;";  //bhc
+    s += "&deg;F ";  //bhc
   }  
   if (evsetemp3 != 0){
+    s += ":  ";
     s += evsetemp3;
-    s += "&deg;F&nbsp;&nbsp";  //bhc
+    s += "&deg;F";  //bhc
   }
-  s += "</FONT></FONT></P>";
+  s += "</P>";
 
 // delay start timer
   s += "<FORM ACTION='delaytimer'>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Delay start timer is <B>";
+  s += "<P>Delay start timer is <B>";
   if (timer_enabled){
     s += "ON</B></P>";
-    s += "<P>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;start time is " + sStart_hour + ":" + sStart_min + "</P>";
-    s += "<P>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;stop time is " + sStop_hour + ":" + sStop_min + "</P>";
+    s += "<P>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;start time is " + sStart_hour + ":" + sStart_min + "</P>";
+    s += "<P>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;stop time is " + sStop_hour + ":" + sStop_min + "</P>";
     s += "<TABLE><TR>";
     s += "<TD><INPUT TYPE=SUBMIT VALUE='      Change      '></TD>";
     s += "</FORM><FORM ACTION='startimmediatelyR'>";
     s += "<TD><INPUT TYPE=SUBMIT VALUE='Start Now/Turn OFF'></TD>";
     s += "</FORM>";
-    s += "</TR></TABLE></FONT></FONT>"; 
+    s += "</TR></TABLE>"; 
   }
   else {
-    s += "OFF&nbsp;&nbsp;</B><INPUT TYPE=SUBMIT VALUE='   Turn ON   '></FONT></FONT></P>";
+    s += "OFF&nbsp;&nbsp;</B><INPUT TYPE=SUBMIT VALUE='   Turn ON   '></P>";
     s += "</FORM>";
   }
 //get time limit
   first = 0;
-  delay(100);
   Serial.flush();
   Serial.println("$G3^50");
   delay(100);
@@ -1237,19 +1419,19 @@ void handleHome() {
       first = sFirst.toInt();
     }
   }
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Limits for this session (first to reach):</FONT></FONT></P>";
+  s += "<P>Limits for this session (first to reach):</P>";
   s += "<FORM METHOD='get' ACTION='homeR'>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;time limit is set to ";
+  s += "<P>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;time limit is set to ";
   s += "<SELECT name='timelimit'>";
   int found_default = 0;  //used if current default setting doesn't match drop down for cases if changed via RAPI command //bhc
   for (int index = 0; index <= 62; index++){   // drop down at 30 min increments
      if (index == 0 ){
        if (first == 0){
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + "no&nbsp;limit</OPTION>";
+         s += "<OPTION value='" + String(index) + "'SELECTED>" + "no limit</OPTION>";
          found_default = 1;
        }
        else
-         s += "<OPTION value='" + String(index) + "'>" +  "no&nbsp;limit</OPTION>";
+         s += "<OPTION value='" + String(index) + "'>" +  "no limit</OPTION>";
      }
      else{    
        if (first == (index*2)){
@@ -1258,23 +1440,15 @@ void handleHome() {
        }
        else
          s += "<OPTION value='" + String(index*2) + "'>";
-       if (index == 1)
-         s += String(index * 30) + " minutes</OPTION>";
-       else if (index == 2)
-         s += String(index/2) + " hour</OPTION>";
-       else if (index%2 == 0)  
-         s += String(index/2) + " hours</OPTION>";
-       else
-         s += String(index/2) + ".5" + " hours</OPTION>";
+       s += String(index * 30) + "</OPTION>";
      }
   }
   if (!found_default)
-    s += "<OPTION value='" + sFirst + "'SELECTED>" + String(first*15) + " minutes</OPTION>";
-  s += "</SELECT></FONT></FONT></P>";
+    s += "<OPTION value='" + sFirst + "'SELECTED>" + String(first*15) + "</OPTION>";
+  s += "</SELECT> minutes</P>";
   
 // get energy limit
   first = 0;
-  delay(100);
   Serial.flush();
   Serial.println("$GH^2B");
   delay(100);
@@ -1285,32 +1459,31 @@ void handleHome() {
       first = sFirst.toInt();
     }
   }
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;charge limit is set to ";
+  s += "<P>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;charge limit is set to ";
   s += "<SELECT name='chargelimit'>";
   found_default = 0;  //used if current default setting doesn't match drop down for cases if changed via RAPI command //bhc
   for (int index = 0; index <= 60; index++){
      if (index == 0 ){
        if (first == 0){               
          found_default = 1;
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + "no&nbsp;limit</OPTION>";
+         s += "<OPTION value='" + String(index) + "'SELECTED>" + "no limit</OPTION>";
        }
        else
-         s += "<OPTION value='" + String(index) + "'>" +  "no&nbsp;limit</OPTION>";
+         s += "<OPTION value='" + String(index) + "'>" +  "no limit</OPTION>";
      }
      else
        if (first == (index*2)){
          found_default = 1;
-         s += "<OPTION value='" + String(index*2) + "'SELECTED>" + String(index*2) + " kWh</OPTION>";
+         s += "<OPTION value='" + String(index*2) + "'SELECTED>" + String(index*2) + "</OPTION>";
        }
        else
-         s += "<OPTION value='" + String(index*2) + "'>" + String(index*2) + " kWh</OPTION>";
+         s += "<OPTION value='" + String(index*2) + "'>" + String(index*2) + "</OPTION>";
   }
   if (!found_default)
-    s += "<OPTION value='" + sFirst + "'SELECTED>" + sFirst + " kWh</OPTION>";
-  s += "</SELECT></FONT></FONT></P>";
+    s += "<OPTION value='" + sFirst + "'SELECTED>" + sFirst + "</OPTION>";
+  s += "</SELECT> kWh</P>";
 
   //get min max current allowable
-  delay(100);
   Serial.flush();
   Serial.println("$GC^20");
   delay(100);
@@ -1325,9 +1498,8 @@ void handleHome() {
       maxamp = sSecond.toInt();                       
     }
   }
- 
 //get pilot setting
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Maximum current setting is <B>";
+  s += "<P>Max current setting is ";
   s += "<SELECT name='maxcurrent'>";
   found_default = 0;  //used if current default setting doesn't match drop down for cases if changed via RAPI command //bhc
   if (evse_flag & 0x0001){                                  // service level flag 1 = level 2, 0 - level 1
@@ -1352,8 +1524,8 @@ void handleHome() {
   }
   if (!found_default)  //bhc
     s += "<OPTION value='" + String(pilotamp) + "'SELECTED>" + String(pilotamp) + "</OPTION>"; //bhc
-  s += "</SELECT>&nbsp;A</B></FONT></FONT></P>"; 
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>EVSE: <INPUT TYPE=RADIO NAME='evse' VALUE='enable' ";
+  s += "</SELECT>&nbsp;A</P>"; 
+  s += "<P>EVSE: <INPUT TYPE=RADIO NAME='evse' VALUE='enable' ";
   if (!evse_disabled && !sleep) 
     s += "CHECKED ";
   s += ">enable <INPUT TYPE=RADIO NAME='evse' VALUE='disable' ";
@@ -1371,7 +1543,7 @@ void handleHome() {
   s += "<TD><INPUT TYPE=SUBMIT VALUE='   Advanced   '></TD>";
   s += "</FORM>";
   s += "<FORM ACTION='.'>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='Configuration'></TD>";
+  s += "<TD><INPUT TYPE=SUBMIT VALUE='Wireless Configuration'></TD>";
   s += "</FORM>";
   s += "<FORM ACTION='rapi'>";
   s += "<TD><INPUT TYPE=SUBMIT VALUE='     RAPI     '></TD>";
@@ -1380,11 +1552,17 @@ void handleHome() {
   s += "<TD><INPUT TYPE=SUBMIT VALUE='    Cancel    '></TD>";
   s += "</FORM>";
   s += "</TR></TABLE>";
+  if (status_path != 0 && wifi_mode == 0){            //bhc start
+    s += "<P>-------------</P>";
+    s += "<P><A href='";
+    s += status_path;
+    s += "'>Link to dashboard here</A></P>";
+  }     //bhc end
   s += "</HTML>";
   s += "\r\n\r\n";
   //Serial.println("sending page...");
   server.send(200, "text/html", s);
-  delay(1000);     //give time to display page //bhc
+  //Serial.println("page sent!");
 }
 
 void setup() {
@@ -1393,8 +1571,10 @@ void setup() {
   EEPROM.begin(512);
   pinMode(0, INPUT);
   char tmpStr[40];
-  String esid;
-  String epass = "";
+  /*String esid;
+  String epass = "";*/  // moved these to be global  //bhc
+
+  delay(100); //bhc start
  
   for (int i = 0; i < 32; ++i){
     esid += char(EEPROM.read(i));
@@ -1402,15 +1582,74 @@ void setup() {
   for (int i = 32; i < 96; ++i){
     epass += char(EEPROM.read(i));
   }
-  for (int i = 96; i < 128; ++i){
+/*  for (int i = 96; i < 128; ++i){
     privateKey += char(EEPROM.read(i));
   }
-  node += char(EEPROM.read(129));
+  node += char(EEPROM.read(129));*/   //new mapping for backup server //bhc
+    for (int i = 96; i < 146; ++i){
+    privateKey += char(EEPROM.read(i));
+  }
+  delay(100);  //bhc
+  for (int i = 146; i < 196; ++i){        //bhc
+    privateKey2 += char(EEPROM.read(i));   //bhc
+  }                                       //bhc  for backup server
+  node = char(EEPROM.read(196));         //bhc
+  for (int i = 197; i < 229; ++i){        //bhc
+    host += char(EEPROM.read(i));   //bhc
+  }                                 //bhc
+  delay(100);  //bhc
+  for (int i = 229; i < 261; ++i){        //bhc
+    host2 += char(EEPROM.read(i));   //bhc
+   }                                 //bhc
+  for (int i = 261; i < 293; ++i){        //bhc
+    directory += char(EEPROM.read(i));   //bhc
+   }                                 //bhc
+  for (int i = 293; i < 325; ++i){        //bhc
+    directory2 += char(EEPROM.read(i));   //bhc
+  }                                 //bhc 
+  delay(100);  //bhc
+  for (int i = 325; i < 426; ++i){        //bhc
+    status_path += char(EEPROM.read(i));   //bhc
+  }                                 //bhc 
+  delay(100);  //bhc end
+// go ahead and make a list of networks in case user needs to change it  //bhc start
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(1000);
+  int n = WiFi.scanNetworks();
+  Serial.print(n);
+  Serial.println(" networks found");
+  st = "<SELECT name='ssid'>";
+  int found_match = 0;
+  delay(1000);
+  for (int i = 0; i < n; ++i){
+    st += "<OPTION value='"; 
+    st += String(WiFi.SSID(i)) + "'";
+    if (String(WiFi.SSID(i)) == esid.c_str()){
+      found_match = 1;
+      Serial.println("found match");
+      st += "SELECTED";
+    }
+    st += "> " + String(WiFi.SSID(i));
+    st += " </OPTION>";
+  }
+  if (!found_match)
+    if (esid != 0){   
+      st += "<OPTION value='" + esid + "'SELECTED>" + esid + "</OPTION>";
+    }
+    else{
+      if (!n)
+        st += "<OPTION value='not chosen'SELECTED> No Networks Found!  Select Rescan or Manually Enter SSID</OPTION>";
+      else
+        st += "<OPTION value='not chosen'SELECTED> Choose One </OPTION>";
+    }
+  st += "</SELECT>";
+  delay(100);     //bhc end
      
   if ( esid != 0 ) { 
     //Serial.println(" ");
     //Serial.print("Connecting as Wifi Client to: ");
-    //Serial.println(esid.c_str());
+    //Serial.println(esid);
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(); 
     WiFi.begin(esid.c_str(), epass.c_str());
@@ -1439,16 +1678,25 @@ void setup() {
           int n = WiFi.scanNetworks();
           //Serial.print(n);
           //Serial.println(" networks found");
-          st = "<ul>";
+         /* st = "<ul>";
           for (int i = 0; i < n; ++i){
             st += "<li>";
             st += WiFi.SSID(i);
             st += "</li>";
           }
-          st += "</ul>";
+          st += "</ul>";*/  //bhc 
+          delay(1000);
+          st = "<SELECT name='ssid'><OPTION value='not chosen'SELECTED> Try again </OPTION>"; //bhc start
+          esid = ""; // clears out esid in case only the password is incorrect-used only to display the right instructions to user //bhc 
+          for (int i = 0; i < n; ++i){
+            st += "<OPTION value='";
+            st += String(WiFi.SSID(i)) + "'> " + String(WiFi.SSID(i));
+            st += " </OPTION>";
+          }
+          st += "</SELECT>";  //bhc end
           delay(100);
           WiFi.softAP(ssid, password);
-          IPAddress myIP = WiFi.softAPIP();
+          IPAddress myIP = WiFi.softAPIP(); 
           //Serial.print("AP IP address: ");
           //Serial.println(myIP);
           Serial.println("$FP 0 0 SSID...OpenEVSE.");
@@ -1468,10 +1716,10 @@ void setup() {
   else {
     //Serial.println();
     //Serial.print("Configuring access point...");
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
+    //WiFi.mode(WIFI_STA); //bhc
+    //WiFi.disconnect();  //bhc
     delay(100);
-    int n = WiFi.scanNetworks();
+   /* int n = WiFi.scanNetworks();
     st = "<ul>";
     for (int i = 0; i < n; ++i){
       st += "<li>";
@@ -1479,9 +1727,9 @@ void setup() {
       st += "</li>";
     }
     st += "</ul>";
-    delay(100);
+    delay(100);*/   //moved scanning to above  //bhc
     WiFi.softAP(ssid, password);
-    IPAddress myIP = WiFi.softAPIP();
+    IPAddress myIP = WiFi.softAPIP();    
     //Serial.print("AP IP address: ");
     //Serial.println(myIP);
     Serial.println("$FP 0 0 SSID...OpenEVSE.");
@@ -1507,12 +1755,13 @@ void setup() {
     sprintf(tmpStr,"$FP 0 1 %d.%d.%d.%d",myAddress[0],myAddress[1],myAddress[2],myAddress[3]);
     Serial.println(tmpStr);
   }
-  
+  server.on("/confirm", handleCfm);  //bhc
+  server.on("/rescan", handleRescan);  //bhc
 	server.on("/", handleRoot);
   server.on("/a", handleCfg);
   server.on("/r", handleRapiR);
   server.on("/reset", handleRst);
-  server.on("/status", handleStatus);
+  // server.on("/status", handleStatus);  //not needed //bhc
   server.on("/rapi", handleRapi);
   server.on("/home", handleHome);
   server.on("/homeR", handleHomeR);
@@ -1524,8 +1773,7 @@ void setup() {
   server.on("/delaytimerR", handleDelayTimerR);
   server.on("/startimmediatelyR", handleStartImmediatelyR);
 	server.begin();
-	//Serial.println("HTTP server started");
-  delay(5000); //bhc
+	Serial.println("HTTP server started");
   Timer = millis();
 }
 
@@ -1541,20 +1789,21 @@ buttonState = digitalRead(0);
 while (buttonState == LOW) {
   buttonState = digitalRead(0);
   erase++;
-  if (erase >= 5000) {
-    ResetEEPROM();
+  if (erase >= 15000) {  //increased the hold down time before erase //bhc
+    ResetEEPROM(0,95); // ponky want to erase ssid and password //bhc
     int erase = 0;
+    WiFi.disconnect();  //bhc
     Serial.print("Finished...");
     delay(2000);
     ESP.reset(); 
   } 
 }
 // Remain in AP mode for 5 Minutes before resetting
-if (wifi_mode == 1){
-   if ((millis() - Timer) >= 300000){
-     ESP.reset();
+/*if (wifi_mode == 1){
+if ((millis() - Timer) >= 300000){
+     ESP.reset(); 
    }
-}
+}*/
  
 if (wifi_mode == 0 && privateKey != 0){
    if ((millis() - Timer) >= 30000){
@@ -1562,16 +1811,14 @@ if (wifi_mode == 0 && privateKey != 0){
      Serial.flush();
      Serial.println("$GE*B0");
      delay(100);
-       while(Serial.available()) {
-         String rapiString = Serial.readStringUntil('\r');
-         if ( rapiString.startsWith("$OK ") ) {
-           String qrapi; 
-           qrapi = rapiString.substring(rapiString.indexOf(' '));
-           pilot = qrapi.toInt();
-         }
-       }  
-  
-     delay(100);
+     while(Serial.available()) {
+       String rapiString = Serial.readStringUntil('\r');
+       if ( rapiString.startsWith("$OK ") ) {
+         String qrapi; 
+         qrapi = rapiString.substring(rapiString.indexOf(' '));
+         pilot = qrapi.toInt();
+       }
+     }  
      Serial.flush();
      Serial.println("$GG*B2");
      delay(100);
@@ -1606,9 +1853,10 @@ if (wifi_mode == 0 && privateKey != 0){
       }
     } 
  
-// We now create a URL for OpenEVSE RAPI data upload request and emoncms.org
-    String url = e_url;
-    String url2 = e_url2;
+// We now create a URL for OpenEVSE RAPI data upload request
+    String url;     //bhc
+    String url2;    //bhc
+    String tmp;   //bhc
     String url_amp = inputID_AMP;
     url_amp += amp;
     url_amp += ",";
@@ -1626,31 +1874,40 @@ if (wifi_mode == 0 && privateKey != 0){
     url_temp3 += ","; 
     String url_pilot = inputID_PILOT;
     url_pilot += pilot;
-    url += node;
-    url += "&json={";
-    url += url_amp;
+    //bhc start
+    tmp = e_url;
+    tmp += node; 
+    tmp += "&json={"; 
+    tmp += url_amp;
     if (volt <= 0) {
-      url += url_volt;
+      tmp += url_volt;
     }
     if (temp1 != 0) {
-      url += url_temp1;
+      tmp += url_temp1;
     }
     if (temp2 != 0) {
-      url += url_temp2;
+      tmp += url_temp2;
     }
     if (temp3 != 0) {
-      url += url_temp3;
+      tmp += url_temp3;
     }
-    url += url_pilot;
+    tmp += url_pilot;
     
-    //bhc start
-    url2 = url;
-    url += "}&devicekey=";
+    tmp += "}&";    
+ 
+    url = directory.c_str();   //needs to be constant character to filter out control characters padding when read from memeory
+    url += tmp;
+    url2 = directory2.c_str();    //needs to be constant character to filter out control characters padding when read from memeory
+    url2 += tmp;
+    
+    /*url += "}&devicekey=";
     url2 += "}&apikey=";
     url += privateKey.c_str();
-//    url2 += "put your own apikey key here"; //ecomcms.org as another server for backup
-
-
+    url2 += "put your own apikey key here"; //ecomcms.org as another server for backup
+*/
+    url += privateKey.c_str();    //needs to be constant character to filter out control characters padding when read from memeory
+    url2 += privateKey2.c_str();  //needs to be constant character to filter out control characters padding when read from memeory
+    
 // Use WiFiClient class to create TCP connections
     WiFiClient client;
     const int httpPort = 80;
@@ -1658,12 +1915,12 @@ if (wifi_mode == 0 && privateKey != 0){
     if (server2_down && (millis()-reset_timer2) > 600000)   //retry in 10 minutes //bhc start
       server2_down = 0;  
     if (!server2_down){  
-      if (!client.connect(host2, httpPort)) {
+      if (!client.connect(host2.c_str(), httpPort)) { //needs to be constant character to filter out control characters padding when read from memeory //bhc
         server2_down = 1;  
         reset_timer2 = millis(); 
       }
       else{ 
-        client.print(String("GET ") + url2 + " HTTP/1.1\r\n" + "Host: " + host2 + "\r\n" + "Connection: close\r\n\r\n");
+        client.print(String("GET ") + url2 + " HTTP/1.1\r\n" + "Host: " + host2.c_str() + "\r\n" + "Connection: close\r\n\r\n"); //bhc
         delay(10);
         while(client.available()){
           String line2 = client.readStringUntil('\r');
@@ -1673,13 +1930,13 @@ if (wifi_mode == 0 && privateKey != 0){
     if (server_down && (millis()-reset_timer) > 600000)   //retry in 10 minutes 
       server_down = 0;  
     if (!server_down){ 
-      if (!client.connect(host, httpPort)) {      
+      if (!client.connect(host.c_str(), httpPort)) { //needs to be constant character to filter out control characters padding when read from memeory //bhc    
         server_down = 1; 
         reset_timer = millis();
       }
       else{
 // This will send the request to the server
-        client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: " + host + "\r\n" + "Connection: close\r\n\r\n");
+        client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: " + host.c_str() + "\r\n" + "Connection: close\r\n\r\n"); //bhc
         delay(10);
         while(client.available()){
           String line = client.readStringUntil('\r');
@@ -1688,7 +1945,7 @@ if (wifi_mode == 0 && privateKey != 0){
     }
     //bhc end
     //Serial.println(host);
-    //Serial.println(url);
+    Serial.println(url);
   }
 }
 
