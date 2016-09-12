@@ -8,7 +8,8 @@
  * e. Hyperlink to external dashboard
  * f. Charge and time limits
  * g. Plug in indicator
- * h. Plug in and charging notifications via Emoncms for home automation systems
+ * h. Plug in and charging notifications via Emoncms as triggers for any home automation software
+ * i. Arduino OTA feature via IDE and Python script
  * This file is part of Open EVSE.
  * Open EVSE is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,8 +29,9 @@
 #include <WiFiClient.h> 
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
+#include <ArduinoOTA.h>
 
-#define VERSION "1.1"
+#define VERSION "1.2"
 
 // for EEPROM map
 #define EEPROM_SIZE 512
@@ -82,11 +84,13 @@
 #define P_READY_SHIFT 1
 #define C_NOTIFY_SHIFT 2
 #define C_READY_SHIFT 3
+#define P_RESET_SHIFT 4
+#define C_RESET_SHIFT 5
 #define P_REMINDERS_SHIFT 0
 #define C_REMINDERS_SHIFT 4
 #define REMINDERS_MASK 0x0f
 #define NOTIFY_MASK 0x01
-#define NOTIFICATION_POLLING_RATE 295000  //check the time every 295 seconds
+#define NOTIFICATION_POLLING_RATE 305000  //check the time every 305 seconds
 #define PLUG_IN_MASK 0x08
 
 ESP8266WebServer server(80);
@@ -148,6 +152,8 @@ int p_notify_sent = 0;
 int c_notify_sent = 0;
 int p_ready = 0;
 int c_ready = 0;
+int notify_P_reset_occurred = 0;
+int notify_C_reset_occurred = 0;
 int p_reminders = 0;
 int c_reminders = 0;
 int notify_flags;
@@ -161,10 +167,218 @@ int wifi_mode = 0;
 int buttonState = 0;
 int clientTimeout = 0;
 unsigned long Timer;
+unsigned long Timer2;
 unsigned long Timer5 = millis();
 unsigned long start_sent_timer_p = millis();
 unsigned long start_sent_timer_c = millis();
 int count = 5;
+
+void bootOTA() {
+  Serial.println("<BOOT> OTA Update");
+  // Port defaults to 8266
+  // ArduinoOTA.setPort(8266);
+
+  // Hostname defaults to esp8266-[ChipID]
+  // ArduinoOTA.setHostname("myesp8266");
+
+  // No authentication by default
+  // ArduinoOTA.setPassword((const char *)"123");
+
+  ArduinoOTA.onStart([]() {
+    Serial.println("Start");
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+  ArduinoOTA.begin();
+  Serial.println("Ready");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void notificationUpdate() {
+   if (wifi_mode == 0 && ((millis() - Timer5) >= NOTIFICATION_POLLING_RATE)) {
+    Timer5 = millis();
+    //Serial.println("inside notify check");
+    if (plug_notify || charge_notify)  {
+      // get current state
+      int vflag = getRapiVolatile();
+      int evse_state = getRapiEVSEState();
+      if (notify_P_reset_occurred && !p_ready){
+        p_ready = 1;
+        update_and_save_notify_flags();
+      }
+      if (notify_C_reset_occurred && !c_ready){
+        c_ready = 1;
+        update_and_save_notify_flags();
+      }
+      // calculate current time
+      getRapiDateTime();
+      int total_minutes = hour*60 + minutes;
+      if (total_minutes > (23*60 + 55)) {
+        notify_P_reset_occurred = 1;
+        notify_C_reset_occurred = 1;
+        update_and_save_notify_flags();
+      }
+      if (plug_notify && p_ready) {
+        // determine if current time is passed the plug in notification time
+        int plug_in_notification_time = plug_hour*60 + plug_min*10;
+        if ((total_minutes >= plug_in_notification_time) && !p_notify_sent && !(vflag & PLUG_IN_MASK)) {
+          p_notify_sent = 1;
+          start_sent_timer_p = millis();
+          //send notify flag;
+          send_notify_data(1, 0);
+          if (!plug_repeat){
+            p_ready = 0;
+            p_notify_sent = 0;
+          }
+          update_and_save_notify_flags();
+        }
+        if (p_notify_sent && ((millis()- start_sent_timer_p) > (plug_repeat * 5 * 60000)) && (plug_repeat != 0)) {
+          if (!(vflag & PLUG_IN_MASK)) {
+            start_sent_timer_p = millis();
+            p_reminders++;
+            if (p_reminders > MAX_REMINDERS) {   // send max reminders
+              if (notify_P_reset_occurred) {
+                p_ready = 1;
+                notify_P_reset_occurred = 0;
+              }
+              else
+                p_ready = 0;
+              p_notify_sent = 0;
+              p_reminders = 0;
+            }
+            else {
+              send_notify_data(p_reminders + 1, 0);
+            }
+            // send reminder notify flag
+            update_and_save_notify_flags();
+            
+          }
+          else {
+            p_notify_sent = 0;
+            if (notify_P_reset_occurred) {
+              p_ready = 1;
+              notify_P_reset_occurred = 0;
+            }
+            else
+              p_ready = 0;
+            p_reminders = 0;
+            send_notify_data(15, 0);
+            update_and_save_notify_flags();
+          }
+        }
+      }
+      if (charge_notify && c_ready) {
+        // determine if current time is passed the charging notification time
+        int charge_notification_time = charge_hour*60 + charge_min*10;
+        if ((total_minutes >= charge_notification_time) && !c_notify_sent && (evse_state != 3)) {
+          c_notify_sent = 1;
+          start_sent_timer_c = millis();
+          //send notify flag;
+          send_notify_data(0, 1);
+          if (!charge_repeat){
+            c_ready = 0;
+            c_notify_sent = 0;
+          }
+          update_and_save_notify_flags();
+        }
+        if (c_notify_sent && ((millis() - start_sent_timer_c) > (charge_repeat * 5 * 60000)) && (charge_repeat != 0)) {
+          if (evse_state != 3) {
+            start_sent_timer_c = millis();
+            c_reminders++;
+            if (c_reminders > MAX_REMINDERS) {   // send max reminders
+              if (notify_C_reset_occurred) {
+                c_ready = 1;
+                notify_C_reset_occurred = 0;
+              }
+              else
+                c_ready = 0;
+              c_notify_sent = 0;
+              c_reminders = 0;
+            }
+            else {
+              send_notify_data(0, c_reminders + 1);
+            } 
+            // send reminder notify flag
+            update_and_save_notify_flags();
+          }
+          else {
+            c_notify_sent = 0;
+            if (notify_C_reset_occurred) {
+              c_ready = 1;
+              notify_C_reset_occurred = 0;
+            }
+            else
+              c_ready = 0;
+            c_reminders = 0;
+            send_notify_data(0, 15);
+            update_and_save_notify_flags();          
+          }
+        }
+      }
+    }
+  }
+}
+
+void EVSEDataUpdate() {
+  Timer = millis();
+  Serial.flush();
+  Serial.println("$GE*B0");
+  delay(100);
+  while (Serial.available()) {
+    String rapiString = Serial.readStringUntil('\r');
+    if ( rapiString.startsWith("$OK ") ) {
+      String qrapi; 
+      qrapi = rapiString.substring(rapiString.indexOf(' '));
+      pilot = qrapi.toInt();
+    }
+  }
+  Serial.flush();
+  Serial.println("$GG*B2");
+  delay(100);
+  while (Serial.available()) {
+    String rapiString = Serial.readStringUntil('\r');
+    if ( rapiString.startsWith("$OK") ) {
+      String qrapi;
+      qrapi = rapiString.substring(rapiString.indexOf(' '));
+      amp = qrapi.toInt();
+      String qrapi1;
+      qrapi1 = rapiString.substring(rapiString.lastIndexOf(' '));
+      volt = qrapi1.toInt();
+    }
+  }
+  delay(100);
+  Serial.flush();
+  Serial.println("$GP*BB");
+  delay(100);
+  while (Serial.available()) {
+    String rapiString = Serial.readStringUntil('\r');
+    if (rapiString.startsWith("$OK") ) {
+      String qrapi;
+      qrapi = rapiString.substring(rapiString.indexOf(' '));
+      temp1 = qrapi.toInt();
+      String qrapi1;
+      int firstRapiCmd = rapiString.indexOf(' ');
+      qrapi1 = rapiString.substring(rapiString.indexOf(' ', firstRapiCmd + 1 ));
+      temp2 = qrapi1.toInt();
+      String qrapi2;
+      qrapi2 = rapiString.substring(rapiString.lastIndexOf(' '));
+      temp3 = qrapi2.toInt();
+    }
+  }
+}
 
 String readEEPROM(int start_byte, int allocated_size) {
   String variable;
@@ -176,7 +390,8 @@ String readEEPROM(int start_byte, int allocated_size) {
 }
 
 void update_and_save_notify_flags() {
-  notify_flags = (p_notify_sent << P_NOTIFY_SHIFT) + (p_ready << P_READY_SHIFT) + (c_notify_sent << C_NOTIFY_SHIFT) + (c_ready << C_READY_SHIFT);
+  notify_flags = (p_notify_sent << P_NOTIFY_SHIFT) + (p_ready << P_READY_SHIFT) + (c_notify_sent << C_NOTIFY_SHIFT) +
+    (c_ready << C_READY_SHIFT) + (notify_P_reset_occurred << P_RESET_SHIFT) + (notify_C_reset_occurred << C_RESET_SHIFT);
   reminders = (p_reminders << P_REMINDERS_SHIFT) + (c_reminders << C_REMINDERS_SHIFT);
   writeEEPROM(NOTIFY_FLAGS_START, NOTIFY_FLAGS_MAX_LENGTH, String(notify_flags));
   writeEEPROM(REMINDERS_START, REMINDERS_MAX_LENGTH, String(reminders));
@@ -491,8 +706,8 @@ void handleCfg() {
       directory = qdirectory;
     }
     if (directory2 != qdirectory2) {
-    writeEEPROM(DIRECTORY2_START, DIRECTORY2_MAX_LENGTH, qdirectory2);
-    directory2 = qdirectory2;
+      writeEEPROM(DIRECTORY2_START, DIRECTORY2_MAX_LENGTH, qdirectory2);
+      directory2 = qdirectory2;
     }
   }
   if (qsid != "not chosen") {
@@ -994,6 +1209,7 @@ void handleAdvancedR() {
     writeEEPROM(PREPEAT_START, PREPEAT_MAX_LENGTH, sPRepeat);
     plug_repeat = sPRepeat.toInt();
     p_reminders = 0;
+    send_notify_data(15, 0);
     update_and_save_notify_flags();
   }
   int charge_changed = 0;
@@ -1016,18 +1232,23 @@ void handleAdvancedR() {
     writeEEPROM(CREPEAT_START, CREPEAT_MAX_LENGTH, sCRepeat);
     charge_repeat = sCRepeat.toInt();
     c_reminders = 0;
+    send_notify_data(0, 15);
     update_and_save_notify_flags();
   }
   if (plug_changed) {
     p_ready = 1;
     p_notify_sent = 0;
     p_reminders = 0;
+    notify_P_reset_occurred = 0;
+    send_notify_data(15, 0);
     update_and_save_notify_flags();
   }
   if (charge_changed) {
     c_ready = 1;
     c_notify_sent = 0;
     c_reminders = 0;
+    notify_C_reset_occurred = 0;
+    send_notify_data(0, 15);
     update_and_save_notify_flags();
   } 
   delay(3000 + count*1000);
@@ -1387,7 +1608,7 @@ void handleHome() {
   }
   s = "<HTML>";
   s += "<FONT SIZE=6><FONT color=006666>Open</FONT><B>EVSE </B></FONT><FONT FACE='Arial'><FONT SIZE=6>Home</FONT>";
-  s += "<P><FONT SIZE=2>EVSE FW v" + sFirst + ",    RAPI v" + sSecond;
+  s += "<P><FONT SIZE=2>Main FW v" + sFirst + ",    RAPI v" + sSecond;
   s += ",   WiFi FW v";
   s += VERSION;
   s += "</P>";  // both firmware (controller and wifi) and RAPI version compatibility
@@ -1869,13 +2090,7 @@ void handleHome() {
   //Serial.println("page sent!");
 }
 
-void setup() {
-	delay(1000);
-	Serial.begin(115200);
-  EEPROM.begin(512);
-  pinMode(0, INPUT);
-  char tmpStr[40];
-
+void downloadEEPROM() {
   esid = readEEPROM(SSID_START, SSID_MAX_LENGTH);
   epass = readEEPROM(PASS_START, PASS_MAX_LENGTH);
   privateKey  = readEEPROM(KEY_START, KEY_MAX_LENGTH);
@@ -1916,11 +2131,21 @@ void setup() {
   p_ready = (notify_flags >> P_READY_SHIFT) & NOTIFY_MASK;
   c_notify_sent = (notify_flags >> C_NOTIFY_SHIFT) & NOTIFY_MASK;
   c_ready = (notify_flags >> C_READY_SHIFT) & NOTIFY_MASK;
+  notify_P_reset_occurred = (notify_flags >> P_RESET_SHIFT) & NOTIFY_MASK;
+  notify_C_reset_occurred = (notify_flags >> C_RESET_SHIFT) & NOTIFY_MASK;
   sTmpStr = readEEPROM(REMINDERS_START, REMINDERS_MAX_LENGTH);
   reminders = sTmpStr.toInt();
   p_reminders = (reminders >> P_REMINDERS_SHIFT) & REMINDERS_MASK;
   c_reminders = (reminders >> C_REMINDERS_SHIFT) & REMINDERS_MASK;
-  
+}
+
+void setup() {
+	delay(1000);
+	Serial.begin(115200);
+  EEPROM.begin(512);
+  pinMode(0, INPUT);
+  char tmpStr[40];
+  downloadEEPROM();
   // go ahead and make a list of networks in case user needs to change it
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
@@ -2062,15 +2287,18 @@ void setup() {
   server.on("/startimmediatelyR", handleStartImmediatelyR);
 	server.begin();
 	Serial.println("HTTP server started");
+  delay(100);
+  bootOTA();
   Timer = millis();
+  Timer2 = millis();
   Timer5 = millis();
 }
-
-
+      
 void loop() {
- server.handleClient();
- int erase = 0;
- long reset_timer;
+  server.handleClient();
+  ArduinoOTA.handle();        // initiates OTA update capability 
+  int erase = 0;
+  long reset_timer;
   long reset_timer2;
 
   buttonState = digitalRead(0);
@@ -2086,140 +2314,24 @@ void loop() {
       ESP.reset();
     } 
   }
-  if (wifi_mode == 0 && (millis() - Timer5 >= NOTIFICATION_POLLING_RATE)) {
-    Timer5 = millis();
-    //Serial.println("inside notify check");
-    if (plug_notify || charge_notify)  {
-      // get current state
-      int vflag = getRapiVolatile();
-      int evse_state = getRapiEVSEState();
-      // calculate current time
-      getRapiDateTime();
-      int total_minutes = hour*60 + minutes;
-      if (total_minutes > (23*60 + 55)) {
-        p_ready = 1;
-        c_ready = 1;
-        update_and_save_notify_flags();
-      }
-      if (plug_notify && p_ready) {
-        // determine if current time is passed the plug in notification time
-        int plug_in_notification_time = plug_hour*60 + plug_min*10;
-        if (!(vflag & PLUG_IN_MASK)) {   
-          if ((total_minutes >= plug_in_notification_time) && !p_notify_sent) {
-            p_notify_sent = 1;
-            start_sent_timer_p = millis();
-            //send notify flag;
-            send_notify_data(1, 0);
-            if (!plug_repeat){
-              p_ready = 0;
-              p_notify_sent = 0;
-            }
-            update_and_save_notify_flags();
-          }
-          if (p_notify_sent && ((millis()- start_sent_timer_p) >(plug_repeat * 5 * 60000)) && (plug_repeat != 0)) {
-            start_sent_timer_p = millis();
-            p_reminders++;
-            send_notify_data(p_reminders + 1, 0);
-            if (p_reminders >= MAX_REMINDERS) {   // send max reminders
-              p_ready = 0;
-              p_notify_sent = 0;
-              p_reminders = 0;
-            }
-            // send reminder notify flag
-            update_and_save_notify_flags();
-          }
-        }
-        else {
-          p_notify_sent = 0;
-          p_ready = 0;
-          p_reminders = 0;
-          update_and_save_notify_flags();
-        }
-      }
-      if (charge_notify && c_ready) {
-        // determine if current time is passed the charging notification time
-        int charge_notification_time = charge_hour*60 + charge_min*10;
-        if (evse_state != 3) {
-          if ((total_minutes >= charge_notification_time) && !c_notify_sent) {
-            c_notify_sent = 1;
-            start_sent_timer_c = millis();
-            //send notify flag;
-            send_notify_data(0, 1);
-            if (!charge_repeat){
-              c_ready = 0;
-              c_notify_sent = 0;
-            }
-            update_and_save_notify_flags();
-          }
-          if (c_notify_sent && (millis()- start_sent_timer_c >(charge_repeat * 5 * 60000)) && (charge_repeat != 0)) {
-            start_sent_timer_c = millis();
-            c_reminders++;
-            send_notify_data(0, c_reminders + 1);
-            if (c_reminders >= MAX_REMINDERS) {   // send max reminders
-              c_ready = 0;
-              c_notify_sent = 0;
-              c_reminders = 0;
-            }
-            // send reminder notify flag
-            update_and_save_notify_flags();
-          }
-        }
-        else {
-          c_notify_sent = 0;
-          c_ready = 0;
-          c_reminders = 0;
-          update_and_save_notify_flags();
-        }
-      }
-    }
+  // Remain in AP for 10 min before trying again if previously no SSID saved
+  if (wifi_mode == 1 && esid != 0){
+    if ((millis() - Timer2) >= 600000){
+      //Serial.println(" ");
+      //Serial.print("Connecting as Wifi Client to: ");
+      //Serial.println(esid);
+      Timer2 = millis();
+      WiFi.mode(WIFI_STA);
+      WiFi.disconnect();
+      WiFi.begin(esid.c_str(), epass.c_str());
+      delay(50);
+     }
   }
+    
+  notificationUpdate();
   if (wifi_mode == 0 && privateKey != 0) { 
-     if ((millis() - Timer) >= SERVER_UPDATE_RATE) {
-       Timer = millis();
-       Serial.flush();
-       Serial.println("$GE*B0");
-       delay(100);
-       while (Serial.available()) {
-         String rapiString = Serial.readStringUntil('\r');
-         if ( rapiString.startsWith("$OK ") ) {
-           String qrapi; 
-           qrapi = rapiString.substring(rapiString.indexOf(' '));
-           pilot = qrapi.toInt();
-         }
-       }
-       Serial.flush();
-       Serial.println("$GG*B2");
-       delay(100);
-       while (Serial.available()) {
-         String rapiString = Serial.readStringUntil('\r');
-         if ( rapiString.startsWith("$OK") ) {
-           String qrapi;
-           qrapi = rapiString.substring(rapiString.indexOf(' '));
-           amp = qrapi.toInt();
-           String qrapi1;
-           qrapi1 = rapiString.substring(rapiString.lastIndexOf(' '));
-           volt = qrapi1.toInt();
-         }
-      }
-      delay(100);
-      Serial.flush();
-      Serial.println("$GP*BB");
-      delay(100);
-      while (Serial.available()) {
-        String rapiString = Serial.readStringUntil('\r');
-        if (rapiString.startsWith("$OK") ) {
-          String qrapi;
-          qrapi = rapiString.substring(rapiString.indexOf(' '));
-          temp1 = qrapi.toInt();
-          String qrapi1;
-          int firstRapiCmd = rapiString.indexOf(' ');
-          qrapi1 = rapiString.substring(rapiString.indexOf(' ', firstRapiCmd + 1 ));
-          temp2 = qrapi1.toInt();
-          String qrapi2;
-          qrapi2 = rapiString.substring(rapiString.lastIndexOf(' '));
-          temp3 = qrapi2.toInt();
-        }
-      }  
+    if ((millis() - Timer) >= SERVER_UPDATE_RATE) {
+      EVSEDataUpdate(); 
       // We now create a URL for OpenEVSE RAPI data upload request
       String url;
       String url2;
