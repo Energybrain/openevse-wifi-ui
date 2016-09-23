@@ -31,7 +31,7 @@
 #include <EEPROM.h>
 #include <ArduinoOTA.h>
 
-#define VERSION "1.2"
+#define VERSION "1.2.1"
 
 // for EEPROM map
 #define EEPROM_SIZE 512
@@ -97,7 +97,6 @@ ESP8266WebServer server(80);
 
 //Default SSID and PASSWORD for AP Access Point Mode
 const char* ssid = "OpenEVSE";
-//const char* ssid = "test";
 const char* password = "openevse";
 String st = "not_scanned";
 String privateKey = "";
@@ -217,11 +216,11 @@ void notificationUpdate() {
       int evse_state = getRapiEVSEState();
       if (notify_P_reset_occurred && !p_ready){
         p_ready = 1;
-        update_and_save_notify_flags();
+        saveNotifyFlags();
       }
       if (notify_C_reset_occurred && !c_ready){
         c_ready = 1;
-        update_and_save_notify_flags();
+        saveNotifyFlags();
       }
       // calculate current time
       getRapiDateTime();
@@ -229,54 +228,50 @@ void notificationUpdate() {
       if (total_minutes > (23*60 + 55)) {
         notify_P_reset_occurred = 1;
         notify_C_reset_occurred = 1;
-        update_and_save_notify_flags();
+        saveNotifyFlags();
       }
       if (plug_notify && p_ready) {
         // determine if current time is passed the plug in notification time
         int plug_in_notification_time = plug_hour*60 + plug_min*10;
         if ((total_minutes >= plug_in_notification_time) && !p_notify_sent && !(vflag & PLUG_IN_MASK)) {
           p_notify_sent = 1;
+          notify_P_reset_occurred = 0;
           start_sent_timer_p = millis();
           //send notify flag;
-          send_notify_data(1, 0);
-          if (!plug_repeat){
+          sendNotifyData(1, 0);
+          if (!plug_repeat) {
             p_ready = 0;
             p_notify_sent = 0;
           }
-          update_and_save_notify_flags();
+          saveNotifyFlags();
         }
         if (p_notify_sent && ((millis()- start_sent_timer_p) > (plug_repeat * 5 * 60000)) && (plug_repeat != 0)) {
           if (!(vflag & PLUG_IN_MASK)) {
             start_sent_timer_p = millis();
             p_reminders++;
             if (p_reminders > MAX_REMINDERS) {   // send max reminders
-              if (notify_P_reset_occurred) {
+              if (notify_P_reset_occurred) 
                 p_ready = 1;
-                notify_P_reset_occurred = 0;
-              }
               else
                 p_ready = 0;
               p_notify_sent = 0;
               p_reminders = 0;
             }
-            else {
-              send_notify_data(p_reminders + 1, 0);
-            }
+            else
+              sendNotifyData(p_reminders + 1, 0);
             // send reminder notify flag
-            update_and_save_notify_flags();
+            saveNotifyFlags();
             
           }
           else {
             p_notify_sent = 0;
-            if (notify_P_reset_occurred) {
+            if (notify_P_reset_occurred) 
               p_ready = 1;
-              notify_P_reset_occurred = 0;
-            }
             else
               p_ready = 0;
             p_reminders = 0;
-            send_notify_data(15, 0);
-            update_and_save_notify_flags();
+            sendNotifyData(15, 0);
+            saveNotifyFlags();
           }
         }
       }
@@ -285,46 +280,42 @@ void notificationUpdate() {
         int charge_notification_time = charge_hour*60 + charge_min*10;
         if ((total_minutes >= charge_notification_time) && !c_notify_sent && (evse_state != 3)) {
           c_notify_sent = 1;
+          notify_C_reset_occurred = 0;
           start_sent_timer_c = millis();
           //send notify flag;
-          send_notify_data(0, 1);
-          if (!charge_repeat){
+          sendNotifyData(0, 1);
+          if (!charge_repeat) {
             c_ready = 0;
             c_notify_sent = 0;
           }
-          update_and_save_notify_flags();
+          saveNotifyFlags();
         }
         if (c_notify_sent && ((millis() - start_sent_timer_c) > (charge_repeat * 5 * 60000)) && (charge_repeat != 0)) {
           if (evse_state != 3) {
             start_sent_timer_c = millis();
             c_reminders++;
             if (c_reminders > MAX_REMINDERS) {   // send max reminders
-              if (notify_C_reset_occurred) {
+              if (notify_C_reset_occurred)
                 c_ready = 1;
-                notify_C_reset_occurred = 0;
-              }
               else
                 c_ready = 0;
               c_notify_sent = 0;
               c_reminders = 0;
             }
-            else {
-              send_notify_data(0, c_reminders + 1);
-            } 
+            else
+              sendNotifyData(0, c_reminders + 1);
             // send reminder notify flag
-            update_and_save_notify_flags();
+            saveNotifyFlags();
           }
           else {
             c_notify_sent = 0;
-            if (notify_C_reset_occurred) {
-              c_ready = 1;
-              notify_C_reset_occurred = 0;
-            }
+            if (notify_C_reset_occurred) 
+              c_ready = 1;              
             else
               c_ready = 0;
             c_reminders = 0;
-            send_notify_data(0, 15);
-            update_and_save_notify_flags();          
+            sendNotifyData(0, 15);
+            saveNotifyFlags();          
           }
         }
       }
@@ -389,7 +380,7 @@ String readEEPROM(int start_byte, int allocated_size) {
   return variable;
 }
 
-void update_and_save_notify_flags() {
+void saveNotifyFlags() {
   notify_flags = (p_notify_sent << P_NOTIFY_SHIFT) + (p_ready << P_READY_SHIFT) + (c_notify_sent << C_NOTIFY_SHIFT) +
     (c_ready << C_READY_SHIFT) + (notify_P_reset_occurred << P_RESET_SHIFT) + (notify_C_reset_occurred << C_RESET_SHIFT);
   reminders = (p_reminders << P_REMINDERS_SHIFT) + (c_reminders << C_REMINDERS_SHIFT);
@@ -410,7 +401,7 @@ void writeEEPROM(int start_byte, int allocated_size, String contents) {
   delay(10);
 }
 
-void ResetEEPROM(int start_byte, int end_byte) {
+void resetEEPROM(int start_byte, int end_byte) {
   Serial.println("Erasing EEPROM");
   for (int i = start_byte; i < end_byte; ++i) {
    EEPROM.write(i, 0);
@@ -419,7 +410,7 @@ void ResetEEPROM(int start_byte, int end_byte) {
   EEPROM.commit();   
 }
 
-void send_notify_data(int p_type, int c_type) {
+void sendNotifyData(int p_type, int c_type) {
   String url;     
   String url2;   
   String tmp;  
@@ -471,11 +462,11 @@ void send_notify_data(int p_type, int c_type) {
 
 void handleRescan() {
   String s;
-  s = "<HTML><FONT size='20'><FONT color=006666>Open</FONT><B>EVSE</B></FONT><P><B><Open Source Hardware</P></B><P><FONT FACE='Arial'><FONT SIZE=4>Rescanning...</P>";
+  s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B></FONT><P><FONT FACE='Arial'><B><Open Source Hardware</P></B><P><FONT SIZE=4>Rescanning...</P>";
   s += "<P>Note.  You may need to manually reconnect to the access point after rescanning.</P>";  
   s += "<P><B>Please wait at least 30 seconds before continuing.</B></P>";
   s += "<FORM ACTION='.'>";  
-  s += "<P><INPUT TYPE=SUBMIT VALUE='Continue'></P>";
+  s += "<P><INPUT TYPE=submit VALUE='Continue'></P>";
   s += "</FORM></P>";
   s += "</FONT></FONT></HTML>\r\n\r\n";
   server.send(200, "text/html", s);
@@ -486,16 +477,16 @@ void handleRescan() {
 
 void handleCfm() {
   String s;
-  s = "<HTML><FONT size='20'><FONT color=006666>Open</FONT><B>EVSE</B></FONT><P><B>Open Source Hardware</P></B><P><FONT FACE='Arial'><FONT SIZE=4>Confirmation</P>";
+  s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B><FONT FACE='Arial'> Confirmation</FONT></FONT><P><FONT FACE='Arial'><B>Open Source Hardware</P></B>";
   s += "<P>You are about to erase the WiFi and notification settings and external link to your dashboard!</P>";
   s += "<FORM ACTION='reset'>";
   s += "&nbsp;<TABLE><TR>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Continue    '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Continue    '></TD>";
   s += "</FORM><FORM ACTION='.'>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Cancel    '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Cancel    '></TD>";
   s += "</FORM>";
   s += "</TR></TABLE>";
-  s += "</FONT></FONT></HTML>";
+  s += "</FONT></HTML>";
   s += "\r\n\r\n";
   server.send(200, "text/html", s);
 }
@@ -504,24 +495,23 @@ void handleRoot() {
   String s;
   String sTmp;
   //Serial.println("inside root");
-  s = "<HTML><FONT size='20'><FONT color=006666>Open</FONT><b>EVSE</B></FONT><P><B>Open Source Hardware</P></B>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=5><B>WiFi Configuration</B></FONT></P>";
+  s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><b>EVSE</B><FONT FACE='Arial'> WiFi Configuration</B></FONT></FONT><P><FONT FACE='Arial'><B>Open Source Hardware</B></P>";
   s += "<P><FONT SIZE=2>WiFi FW v";
   s += VERSION;
   s += "</FONT></P><FONT SIZE=4>";
-  s += "<P>================================</P>";
+  s += "<P>====================</P>";
   s += "<P><B>NETWORK CONNECT</B></P>";
   s += "<FORM ACTION='rescan'>";  
-  s += "<INPUT TYPE=SUBMIT VALUE='     Rescan     '>";
+  s += "<INPUT TYPE=submit VALUE='     Rescan     '>";
   s += "</FORM>";
-  s += "<FORM method='get' action='a'>";
+  s += "<FORM METHOD='get' ACTION='a'>";
   if (wifi_mode == 0)
     s += "<B><I>Connected to </B></I>";
   else
     s += "<B><I>Choose a network </B></I>";
   s += st;
-  s += "<P><LABEL><B><I>&nbsp;&nbsp;&nbsp;&nbsp;or enter SSID manually:</B></I></LABEL><INPUT name='hssid' maxlength='32' value='empty'></P>";
-  s += "<P><LABEL><B><I>Password:</B></I></LABEL><INPUT type='password' size = '25' name='pass' maxlength='32' value='";
+  s += "<P><LABEL><B><I>&nbsp;&nbsp;&nbsp;&nbsp;or enter SSID manually:</B></I></LABEL><INPUT NAME='hssid' MAXLENGTH='32' VALUE='empty'></P>";
+  s += "<P><LABEL><B><I>Password:</B></I></LABEL><INPUT TYPE='password' SIZE = '25' NAME='pass' MAXLENGTH='32' VALUE='";
   sTmp = "";
   for (int i = 0; i < epass.length(); ++i) {     // this is to allow single quote entries to be displayed
       if (epass[i] == '\'')
@@ -531,7 +521,7 @@ void handleRoot() {
     }
   s += sTmp.c_str();       //needs to be constant character to filter out control characters padding when read from memory
   s += "'></P>";
-  s += "<P>================================</P>";
+  s += "<P>=====================</P>";
   s += "<P><B>DATABASE SERVER</B></P>";
   if (wifi_mode != 0) {
     s += "<P>Note. You are not connected to any network so no data will be sent</P>";
@@ -545,10 +535,10 @@ void handleRoot() {
     s += "<P>Fill in the appropriate information about the</P>";
     s += "<P>Emoncms server you want use.</P>";
   }
-  s += "<P>______________</P>";
+  s += "<P>__________</P>";
   if (wifi_mode == 0) {
     s += "<P><B><I>Primary Server</B></I></P>";
-    s += "<P><LABEL><I>Write key (devicekey=1..32):</I></LABEL><INPUT name='ekey' maxlength='50' value='";
+    s += "<P><LABEL><I>Write key (devicekey=1..32):</I></LABEL><INPUT NAME='ekey' MAXLENGTH='50' VALUE='";
     sTmp = "";
     for (int i = 0; i < privateKey.length(); ++i) {     // this is to allow single quote entries to be displayed
       if (privateKey[i] == '\'')
@@ -558,7 +548,7 @@ void handleRoot() {
     }
     s += sTmp.c_str();     //needs to be constant character to filter out control characters padding when read from memory
     s += "'></P>";
-    s += "<P><LABEL><I>Server address (example.com):</I></LABEL><INPUT name='host' maxlength='32' value='";
+    s += "<P><LABEL><I>Server address (example.com):</I></LABEL><INPUT NAME='host' MAXLENGTH='32' VALUE='";
     sTmp = "";
     for (int i = 0; i < host.length(); ++i) {     // this is to allow single quote entries to be displayed
       if (host[i] == '\'')
@@ -568,7 +558,7 @@ void handleRoot() {
     }
     s += sTmp.c_str();    //needs to be constant character to filter out control characters padding when read from memory
     s += "'></P>";
-    s += "<P><LABEL><I>Database directory (/emoncms/):</I></LABEL><INPUT name='dir' maxlength='32' value='";
+    s += "<P><LABEL><I>Database directory (/emoncms/):</I></LABEL><INPUT NAME='dir' MAXLENGTH='32' VALUE='";
     sTmp = "";
     for (int i = 0; i < directory.length(); ++i) {     // this is to allow single quote entries to be displayed
       if (directory[i] == '\'')
@@ -578,9 +568,9 @@ void handleRoot() {
     }
     s += sTmp.c_str();    //needs to be constant character to filter out control characters padding when read from memory
     s += "'></P>";
-    s += "<P>_______________________</P>";   
+    s += "<P>__________</P>";   
     s += "<P><B><I>Backup Server (optional)</B></I></P>";
-    s += "<P><LABEL><I> Write key (apikey=1..32):</I></LABEL><INPUT name='ekey2' maxlength='50' value='";
+    s += "<P><LABEL><I> Write key (apikey=1..32):</I></LABEL><INPUT NAME='ekey2' MAXLENGTH='50' VALUE='";
     sTmp = "";
     for (int i = 0; i < privateKey2.length(); ++i) {     // this is to allow single quote entries to be displayed
       if (privateKey2[i] == '\'')
@@ -590,7 +580,7 @@ void handleRoot() {
     }
     s += sTmp.c_str();    //needs to be constant character to filter out control characters padding when read from memory
     s += "'></P>";
-    s += "<P><LABEL><I>Server address (example2.com):</I></LABEL><INPUT name='host2' mzxlength='31' value='";
+    s += "<P><LABEL><I>Server address (example2.com):</I></LABEL><INPUT NAME='host2' mzxlength='31' VALUE='";
     sTmp = "";
     for (int i = 0; i < host2.length(); ++i) {     // this is to allow single quote entries to be displayed
       if (host2[i] == '\'')
@@ -600,7 +590,7 @@ void handleRoot() {
     }
     s += sTmp.c_str();    //needs to be constant character to filter out control characters padding when read from memory
     s += "'></P>";  
-    s +=  "<P><LABEL><I>Database directory (/):</I></LABEL><INPUT name='dir2' maxlength='32' value='";
+    s +=  "<P><LABEL><I>Database directory (/):</I></LABEL><INPUT NAME='dir2' MAXLENGTH='32' VALUE='";
     sTmp = "";
     for (int i = 0; i < directory2.length(); ++i) {     // this is to allow single quote entries to be displayed
       if (directory2[i] == '\'')
@@ -610,10 +600,10 @@ void handleRoot() {
     }
     s += sTmp.c_str();    //needs to be constant character to filter out control characters padding when read from memory
     s += "'></P>";
-    s += "<P>--------</P>";
-    s += "<P><LABEL><I>Node for both servers (default is 0):</I></LABEL><SELECT name='node'>"; 
+    s += "<P>__________</P>";
+    s += "<P><LABEL><I>Node for both servers (default is 0):</I></LABEL><SELECT NAME='node'>"; 
     for (int i = 0; i <= 8; ++i) {
-      s += "<OPTION value='" + String(i) + "'";
+      s += "<OPTION VALUE='" + String(i) + "'";
       if (node == String(i))
       s += "SELECTED";
       s += ">" + String(i) + "</OPTION>";
@@ -621,13 +611,13 @@ void handleRoot() {
     s += "</SELECT></P>";
   }  
   s += "&nbsp;<TABLE><TR>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Submit    '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Submit    '></TD>";
   s += "</FORM><FORM ACTION='home'>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Home Page   '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Home   '></TD>";
   s += "</FORM>";
   s += "</TR></TABLE>";
   s += "<FORM ACTION='confirm'>";  
-  s += "<P>&nbsp;<INPUT TYPE=SUBMIT VALUE='Erase Settings'></P>";
+  s += "<P>&nbsp;<INPUT TYPE=submit VALUE='Erase Settings'></P>";
   s += "</FORM></FONT></FONT></P>";
   s += "</HTML>\r\n\r\n";
 	server.send(200, "text/html", s);
@@ -635,10 +625,16 @@ void handleRoot() {
 
 void handleRapi() {
   String s;
-  s = "<html><font size='20'><font color=006666>Open</font><b>EVSE</b></font><p><b>Open Source Hardware</b><p>Send RAPI Command<p>Common Commands:<p>Set Current - $SC XX<p>Set Service Level - $SL 1 - $SL 2 - $SL A<p>Get Real-time Current - $GG<p>Get Temperatures - $GP<p>";
-        s += "<p>";
-        s += "<form method='get' action='r'><label><b><i>RAPI Command:</b></i></label><input name='rapi' maxlength='32'><p><input type='submit'></form>";
-        s += "</html>\r\n\r\n";
+  s = "<html><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B></FONT><P><FONT FACE='Arial'><B>Open Source Hardware</B><P>Send RAPI Command<p>Common Commands:<P>Set Current - $SC XX<P>Set Service Level - $SL 1 - $SL 2 - $SL A<P>Get Real-time Current - $GG<P>Get Temperatures - $GP<P>";
+  s += "<P>";
+  s += "<FORM METHOD='get' ACTION='r'><LABEL><B><i>RAPI Command:</B></I></LABEL><INPUT NAME='rapi' MAXLENGTH='32'><P>";
+  s += "&nbsp;<TABLE><TR>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Submit    '></TD>";
+  s += "</FORM><FORM ACTION='home'>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Home   '></TD>";
+  s += "</FORM>";
+  s += "</TR></TABLE>";
+  s += "</FONT></HTML>\r\n\r\n";
   server.send(200, "text/html", s);
 }
 
@@ -654,13 +650,19 @@ void handleRapiR() {
        while (Serial.available()) {
          rapiString = Serial.readStringUntil('\r');
        }    
-   s = "<html><font size='20'><font color=006666>Open</font><b>EVSE</b></font><p><b>Open Source Hardware</b><p>RAPI Command Sent<p>Common Commands:<p>Set Current - $SC XX<p>Set Service Level - $SL 1 - $SL 2 - $SL A<p>Get Real-time Current - $GG<p>Get Temperatures - $GP<p>";
+   s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B></FONT><P><FONT FACE='Arial'><B>Open Source Hardware</B><P>RAPI Command Sent<P>Common Commands:<P>Set Current - $SC XX<P>Set Service Level - $SL 1 - $SL 2 - $SL A<P>Get Real-time Current - $GG<P>Get Temperatures - $GP<P>";
    s += "<p>";
-   s += "<form method='get' action='r'><label><b><i>RAPI Command:</b></i></label><input name='rapi' maxlength='32'><p><input type='submit'></form>";
+   s += "<FORM METHOD='get' ACTION='r'><LABEL><B><I>RAPI Command:</B></I></LABEL><INPUT NAME='rapi' MAXLENGTH='32'><P>";
+   s += "&nbsp;<TABLE><TR>";
+   s += "<TD><INPUT TYPE=SUBMIT VALUE='    Submit    '></TD>";
+   s += "</FORM><FORM ACTION='home'>";
+   s += "<TD><INPUT TYPE=SUBMIT VALUE='    Home   '></TD>";
+   s += "</FORM>";
+   s += "</TR></TABLE>";
    s += rapi;
-   s += "<p>>";
+   s += "<P>>";
    s += rapiString;
-   s += "<p></html>\r\n\r\n";
+   s += "<P></FONT></HTML>\r\n\r\n";
    server.send(200, "text/html", s);
 }
 
@@ -712,7 +714,7 @@ void handleCfg() {
   }
   if (qsid != "not chosen") {
     writeEEPROM(SSID_START, SSID_MAX_LENGTH, qsid);
-    s = "<HTML><FONT size='20'><FONT color=006666>Open</FONT><B>EVSE</B></FONT><P><B>Open Source Hardware</P></B><P><FONT FACE='Arial'><FONT SIZE=4>Updating Settings...</P>";
+    s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B></FONT><P><FONT FACE='Arial'><B>Open Source Hardware</P></B><P><FONT SIZE=4>Updating Settings...</P>";
     if (qsid != esid.c_str() || qpass != epass.c_str()) {
       s += "<P>Saved to Memory...</P>";
       s += "<P>The OpenEVSE will reset and try to join " + qsid + "</P>";
@@ -731,14 +733,14 @@ void handleCfg() {
     else {
       s += "<FORM ACTION='home'>";
       s += "<P>Saved to Memory...</P>";
-      s += "<P><INPUT TYPE=SUBMIT VALUE='Continue'></P>";
+      s += "<P><INPUT TYPE=submit VALUE='Continue'></P>";
     }
   }
   else {
-     s = "<HTML><FONT size='20'><FONT color=006666>Open</FONT><B>EVSE</B></FONT><P><B>Open Source Hardware</P></B><P><FONT FACE='Arial'><FONT SIZE=5>Warning. No network selected.";
+     s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B></FONT><P><FONT FACE='Arial'><B>Open Source Hardware</P></B><P><FONT SIZE=5>Warning. No network selected.";
      s += "<P>All functions except data logging will continue to work.</P>";
      s += "<FORM ACTION='home'>";
-     s += "<P><INPUT TYPE=SUBMIT VALUE='     OK     '></P>";
+     s += "<P><INPUT TYPE=submit VALUE='     OK     '></P>";
   }
   s += "</FORM></FONT></FONT></HTML>\r\n\r\n";
   server.send(200, "text/html", s);
@@ -746,13 +748,13 @@ void handleCfg() {
 
 void handleRst() {
   String s;
-  s = "<HTML><FONT size='20'><FONT color=006666>Open</FONT><B>EVSE</B></FONT><B>Open Source Hardware</B><P><FONT FACE='Arial'><FONT SIZE=4>WiFi Configuration</P><P>Reset to Defaults:</P>";
+  s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B><FONT FACE='Arial'> WiFi Configuration<FONT SIZE=4><P><B>Open Source Hardware</B></P><P>Reset to Defaults:</P>";
   s += "<P>Clearing the EEPROM...</P>";
   s += "<P>The OpenEVSE will reset and have an IP address of 192.168.4.1</P>";
   s += "<P>After about 30 seconds, the OpenEVSE will activate the access point</P>";
   s += "<P>SSID:OpenEVSE and password:openevse</P>";
   s += "</FONT></FONT></HTML>\r\n\r\n";
-  ResetEEPROM(0, EEPROM_SIZE);
+  resetEEPROM(0, EEPROM_SIZE);
   EEPROM.commit();
   server.send(200, "text/html", s);
   WiFi.disconnect();
@@ -773,7 +775,7 @@ void handleStartImmediatelyR() {
   delay(100);
   s += "<FORM ACTION='home'>";
   s += "<P><FONT SIZE=4><FONT FACE='Arial'>Success!</P>";
-  s += "<P><INPUT TYPE=SUBMIT VALUE='     OK     '></FONT></FONT></P>";
+  s += "<P><INPUT TYPE=submit VALUE='     OK     '></FONT></FONT></P>";
   s += "</FORM>";
   s += "</HTML>";
   s += "\r\n\r\n";
@@ -789,7 +791,7 @@ void handleDelayTimer() {
   String sFourth = "0";
   String sFifth = "0";
   s = "<HTML>";
-  s += "<FONT SIZE=6><FONT color=006666>Open</FONT><B>EVSE </B></FONT><FONT FACE='Arial'><FONT SIZE=5>Set Delay Start Timer</FONT></FONT>";  
+  s += "<FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE </B><FONT FACE='Arial'>Set Delay Start Timer</FONT></FONT>";  
  //get delay start timer
   Serial.flush();
   Serial.println("$GD^27");
@@ -820,71 +822,71 @@ void handleDelayTimer() {
   }
   s += "<FORM METHOD='get' ACTION='delaytimerR'>";
   s += "<P><FONT FACE='Arial'><FONT SIZE=4>Start Time (hh:mm) - ";
-  s += " <SELECT name='starthour'>";
+  s += " <SELECT NAME='starthour'>";
   for (index = 0; index <= 9; ++index) {
      if (index == start_hour)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
   }
     for (index = 10; index <= 23; ++index) {
      if (index == start_hour)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + String(index) + "</OPTION>";
   }
   s += "</SELECT>:";
-  s += "<SELECT name='startmin'>";
+  s += "<SELECT NAME='startmin'>";
   for (index = 0; index <= 9; ++index) {
      if (index == start_min)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
   }
   for (index = 10; index <= 59; ++index) {
      if (index == start_min)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + String(index) + "</OPTION>";
   }
   s += "</SELECT></P>";
-  s += "<P>Stop Timer (hh:mm) - ";
-  s += "<SELECT name='stophour'>";
+  s += "<P>Stop Time (hh:mm) - ";
+  s += "<SELECT NAME='stophour'>";
   for (index = 0; index <= 9; ++index) {
      if (index == stop_hour)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
   }
   for (index = 10; index <= 23; ++index) {
      if (index == stop_hour)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + String(index) + "</OPTION>";
   }
   s += "</SELECT>:";
-  s += "<SELECT name='stopmin'>";
+  s += "<SELECT NAME='stopmin'>";
   for (index = 0; index <= 9; ++index) {
      if (index == stop_min)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
   }
   for (index = 10; index <= 59; ++index)  {
      if (index == stop_min)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + String(index) + "</OPTION>";
   }
   s += "</SELECT></P>";
   s += "<P>Note. All zeros will turn OFF delay timer</P>";
   s += "&nbsp;<TABLE><TR>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Submit    '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Submit    '></TD>";
   s += "</FORM><FORM ACTION='home'>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Cancel    '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Cancel    '></TD>";
   s += "</FORM>";
   s += "</TR></TABLE>";
-  s += "</HTML>";
+  s += "</FONT></FONT></HTML>";
   s += "\r\n\r\n";
   server.send(200, "text/html", s);
 }
@@ -909,7 +911,7 @@ void handleDelayTimerR() {
   delay(100);  
   s += "<FORM ACTION='home'>";
   s += "<P><FONT SIZE=4><FONT FACE='Arial'>Success!</P>";
-  s += "<P><INPUT TYPE=SUBMIT VALUE='     OK     '></FONT></FONT></P>";
+  s += "<P><INPUT TYPE=submit VALUE='     OK     '></FONT></FONT></P>";
   s += "</FORM>";
   s += "</HTML>";
   s += "\r\n\r\n";
@@ -922,7 +924,7 @@ void handleAdvanced() {
   String sFirst;
   String sSecond;
   s = "<HTML>";
-  s += "<FONT SIZE=6><FONT color=006666>Open</FONT><B>EVSE </B></FONT><FONT FACE='Arial'><FONT SIZE=6>Advanced Menu</FONT>";
+  s += "<FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE </B><FONT FACE='Arial'>Advanced</FONT></FONT><FONT FACE='Arial'>";
   //get EVSE flag and pilot
   int pilotamp = getRapiFlag();
   s += "<FORM METHOD='get' ACTION='advancedR'>";
@@ -993,7 +995,7 @@ void handleAdvanced() {
     s += " CHECKED";
   s += ">Monochrome</P>";
   s += "<P>-------------------</P>";
-  s += "<P><LABEL>External address of dashboard:</LABEL><INPUT name='stat_path' maxlength='101' value='";
+  s += "<P><LABEL>External address of dashboard:</LABEL><INPUT NAME='stat_path' ='101' VALUE='";
   sTmp = "";
   for (int i = 0; i < status_path.length(); ++i) {     // this is to allow single quote entries to be displayed
       if (status_path[i] == '\'')
@@ -1009,88 +1011,88 @@ void handleAdvanced() {
     if (plug_notify == 1) 
       s += "CHECKED ";
     s += "> When not plugged in by ";
-    s += " <SELECT name='plug_hour'>";
+    s += " <SELECT NAME='plug_hour'>";
     for (int index = 0; index <= 9; ++index) {
        if (index == plug_hour)
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
        else
-         s += "<OPTION value='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
     }
     for (int index = 10; index <= 23; ++index) {
        if (index == plug_hour)
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
        else
-         s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'>" + String(index) + "</OPTION>";
     }
     s += "</SELECT>:";
-    s += "<SELECT name='plug_min'>";
+    s += "<SELECT NAME='plug_min'>";
     for (int index = 0; index < 1; ++index) {
        if (index == plug_min)
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + "0" + String(index*10) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + "0" + String(index*10) + "</OPTION>";
        else
-         s += "<OPTION value='" + String(index) + "'>" + "0" + String(index*10) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'>" + "0" + String(index*10) + "</OPTION>";
     }
     for (int index = 1; index < 6; ++index) {
        if (index == plug_min)
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index*10) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index*10) + "</OPTION>";
        else
-         s += "<OPTION value='" + String(index) + "'>" + String(index*10) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'>" + String(index*10) + "</OPTION>";
     }
     s += "</SELECT></P><P>&nbsp; and remind every ";
-    s += "<SELECT name='plug_repeat'>";
+    s += "<SELECT NAME='plug_repeat'>";
     for (int index = 0; index <= 3; ++index) {
        if (plug_repeat == index)
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index*5) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index*5) + "</OPTION>";
        else
-         s += "<OPTION value='" + String(index) + "'>" + String(index*5) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'>" + String(index*5) + "</OPTION>";
     }
     s += "</SELECT> minutes (0 is no reminders)</P>";
     s += "<P>&nbsp;&nbsp;<INPUT TYPE='checkbox' NAME='charge_notify' VALUE='1' ";
     if (charge_notify == 1) 
       s += "CHECKED ";
     s += "> When not charging by ";
-      s += " <SELECT name='charge_hour'>";
+      s += " <SELECT NAME='charge_hour'>";
     for (int index = 0; index <= 9; ++index) {
        if (index == charge_hour)
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
        else
-         s += "<OPTION value='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
     }
     for (int index = 10; index <= 23; ++index) {
        if (index == charge_hour)
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
        else
-         s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'>" + String(index) + "</OPTION>";
     }
     s += "</SELECT>:";
-    s += "<SELECT name='charge_min'>";
+    s += "<SELECT NAME='charge_min'>";
     for (int index = 0; index < 1; ++index) {
        if (index == charge_min)
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + "0" + String(index*10) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + "0" + String(index*10) + "</OPTION>";
        else
-         s += "<OPTION value='" + String(index) + "'>" + "0" + String(index*10) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'>" + "0" + String(index*10) + "</OPTION>";
     }
     for (int index = 1; index < 6; ++index) {
        if (index == charge_min)
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index*10) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index*10) + "</OPTION>";
        else
-         s += "<OPTION value='" + String(index) + "'>" + String(index*10) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'>" + String(index*10) + "</OPTION>";
     }
     s += "</SELECT></P><P>&nbsp; and remind every ";
-    s += "<SELECT name='charge_repeat'>";
+    s += "<SELECT NAME='charge_repeat'>";
     for (int index = 0; index <= 3; ++index) {
        if (charge_repeat == index)
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index*5) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index*5) + "</OPTION>";
        else
-         s += "<OPTION value='" + String(index) + "'>" + String(index*5) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'>" + String(index*5) + "</OPTION>";
     }
     s += "</SELECT> minutes (0 is no reminders)</P>";
   }
   s += "</FONT></FONT>";
   s += "&nbsp;<TABLE><TR>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Submit    '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Submit    '></TD>";
   s += "</FORM><FORM ACTION='home'>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Cancel    '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Cancel    '></TD>";
   s += "</FORM>";
   s += "</TR></TABLE>";
   s += "</HTML>";
@@ -1209,8 +1211,8 @@ void handleAdvancedR() {
     writeEEPROM(PREPEAT_START, PREPEAT_MAX_LENGTH, sPRepeat);
     plug_repeat = sPRepeat.toInt();
     p_reminders = 0;
-    send_notify_data(15, 0);
-    update_and_save_notify_flags();
+    sendNotifyData(15, 0);
+    saveNotifyFlags();
   }
   int charge_changed = 0;
   if (charge_notify != sCnotify.toInt()) {
@@ -1232,29 +1234,29 @@ void handleAdvancedR() {
     writeEEPROM(CREPEAT_START, CREPEAT_MAX_LENGTH, sCRepeat);
     charge_repeat = sCRepeat.toInt();
     c_reminders = 0;
-    send_notify_data(0, 15);
-    update_and_save_notify_flags();
+    sendNotifyData(0, 15);
+    saveNotifyFlags();
   }
   if (plug_changed) {
     p_ready = 1;
     p_notify_sent = 0;
     p_reminders = 0;
     notify_P_reset_occurred = 0;
-    send_notify_data(15, 0);
-    update_and_save_notify_flags();
+    sendNotifyData(15, 0);
+    saveNotifyFlags();
   }
   if (charge_changed) {
     c_ready = 1;
     c_notify_sent = 0;
     c_reminders = 0;
     notify_C_reset_occurred = 0;
-    send_notify_data(0, 15);
-    update_and_save_notify_flags();
+    sendNotifyData(0, 15);
+    saveNotifyFlags();
   } 
   delay(3000 + count*1000);
   s += "<FORM ACTION='home'>";  
   s += "<P><FONT SIZE=4><FONT FACE='Arial'>Success!</P>";
-  s += "<P><INPUT TYPE=SUBMIT VALUE='     OK     '></FONT></FONT></P>";
+  s += "<P><INPUT TYPE=submit VALUE='     OK     '></FONT></FONT></P>";
   s += "</FORM>";
   s += "</HTML>";
   s += "\r\n\r\n";
@@ -1359,99 +1361,99 @@ void handleDateTime() {
   String s;
   int index = 0;
   s = "<HTML>";
-  s +="<FONT SIZE=6><FONT color=006666>Open</FONT><B>EVSE </B></FONT><FONT FACE='Arial'><FONT SIZE=5>Edit Date and Time</FONT>";  
+  s +="<FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE </B><FONT FACE='Arial'>Edit Date and Time";  
  //get date and time
   getRapiDateTime();
   s += "<FORM METHOD='get' ACTION='datetimeR'>";
   s += "<P><FONT SIZE=4>Current Date is ";
-  s += "<SELECT name='month'><OPTION value='1'";
+  s += "<SELECT NAME='month'><OPTION VALUE='1'";
   if (month == 1)
     s += " SELECTED";
-  s += " >January</OPTION><OPTION value='2'";
+  s += " >January</OPTION><OPTION VALUE='2'";
   if (month == 2)
    s += " SELECTED";
-  s += " >February</OPTION><OPTION value='3'";
+  s += " >February</OPTION><OPTION VALUE='3'";
   if (month == 3)
    s += " SELECTED";
-  s += " >March</OPTION><OPTION value='4'";
+  s += " >March</OPTION><OPTION VALUE='4'";
   if (month == 4)
    s += " SELECTED";
-  s += " >April</OPTION><OPTION value='5'";
+  s += " >April</OPTION><OPTION VALUE='5'";
   if (month == 5)
    s += " SELECTED";
-  s += " >May</OPTION><OPTION value='6'";
+  s += " >May</OPTION><OPTION VALUE='6'";
   if (month == 6)
    s += " SELECTED";
-  s += " >June</OPTION><OPTION value='7'";
+  s += " >June</OPTION><OPTION VALUE='7'";
   if (month == 7)
    s += " SELECTED";
-  s += " >July</OPTION><OPTION value='8'";
+  s += " >July</OPTION><OPTION VALUE='8'";
   if (month == 8)
    s += " SELECTED";
-  s += " >August</OPTION><OPTION value='9'";
+  s += " >August</OPTION><OPTION VALUE='9'";
   if (month == 9)
    s += " SELECTED";
-  s += " >September</OPTION><OPTION value='10'";
+  s += " >September</OPTION><OPTION VALUE='10'";
   if (month == 10)
    s += " SELECTED";
-  s += " >October</OPTION><OPTION value='11'";
+  s += " >October</OPTION><OPTION VALUE='11'";
   if (month == 11)
    s += " SELECTED";
-  s += " >November</OPTION><OPTION value='12'";
+  s += " >November</OPTION><OPTION VALUE='12'";
   if (month ==12)
    s += " SELECTED";
   s += " >December</OPTION></SELECT>";
-  s += " <SELECT name='day'>";
+  s += " <SELECT NAME='day'>";
   for (index = 1; index <= 31; ++index) {
      if (index == day)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + String(index) + "</OPTION>";
   }
   s += "</SELECT>, 20";
-  s += "<SELECT name='year'>";
+  s += "<SELECT NAME='year'>";
   for (index = 16; index <= 99; ++index) {
      if (index == year)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + String(index) + "</OPTION>";
   }
   s += "</SELECT></P>";
   s += "<P> Current Time (hh:mm) is ";
-  s += "<SELECT name='hour'>";
+  s += "<SELECT NAME='hour'>";
   for (index = 0; index <= 9; ++index) {
      if (index == hour)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
   }
   for (index = 10; index <= 23; ++index) {
      if (index == hour)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + String(index) + "</OPTION>";
   }
   s += "</SELECT>:";
-  s += "<SELECT name='minutes'>";
+  s += "<SELECT NAME='minutes'>";
   for (index = 0; index <= 9; ++index) {
      if (index == minutes)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + "0" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + "0" + String(index) + "</OPTION>";
   }
   for (index = 10; index <= 59; ++index) {
      if (index == minutes)
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
      else
-       s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + String(index) + "</OPTION>";
   }
   s += "</SELECT></P>";
   s += "&nbsp;<TABLE><TR>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Submit    '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Submit    '></TD>";
   s += "</FORM><FORM ACTION='home'>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Cancel    '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Cancel    '></TD>";
   s += "</FORM>";
-  s += "</TR></FONT></FONT></TABLE>";
+  s += "</TR></FONT></FONT></FONT></TABLE>";
   s += "</HTML>";
   s += "\r\n\r\n";
   server.send(200, "text/html", s);
@@ -1523,7 +1525,7 @@ void handleDateTimeR() {
   }
   else
     s += "Invalid Date. Please try again.<P><FORM ACTION='datetime'>";
-  s += "<INPUT TYPE=SUBMIT VALUE='     OK     '></FORM></P></FONT></FONT></HTML>\r\n\r\n";
+  s += "<INPUT TYPE=submit VALUE='     OK     '></FORM></P></FONT></FONT></HTML>\r\n\r\n";
   server.send(200, "text/html", s);
 }
 
@@ -1572,7 +1574,7 @@ void handleHomeR() {
   delay(100);
   s += "<FORM ACTION='home'>"; 
   s += "<P><FONT SIZE=4><FONT FACE='Arial'>Success!</P>";
-  s += "<P><INPUT TYPE=SUBMIT VALUE='     OK     '></FONT></FONT></P>";
+  s += "<P><INPUT TYPE=submit VALUE='     OK     '></FONT></FONT></P>";
   s += "</FORM>";
   s += "</HTML>";
   s += "\r\n\r\n";
@@ -1607,7 +1609,7 @@ void handleHome() {
     }
   }
   s = "<HTML>";
-  s += "<FONT SIZE=6><FONT color=006666>Open</FONT><B>EVSE </B></FONT><FONT FACE='Arial'><FONT SIZE=6>Home</FONT>";
+  s += "<FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE </B><FONT FACE='Arial'>Home</FONT></FONT><FONT FACE='Arial'>";
   s += "<P><FONT SIZE=2>Main FW v" + sFirst + ",    RAPI v" + sSecond;
   s += ",   WiFi FW v";
   s += VERSION;
@@ -1724,7 +1726,7 @@ void handleHome() {
       sSecond = "not set ";
   }
   s += "<FORM ACTION='datetime'>";
-  s += "<P><FONT SIZE=4>Today is " + sSecond + sThird + ", 20" + sFirst + ",&nbsp;" + sFourth + ":" + sFifth + ":" + sSixth + "  <INPUT TYPE=SUBMIT VALUE='  Change  '></P>"; // format June 3, 2016, 14:20:34
+  s += "<P><FONT SIZE=4>Today is " + sSecond + sThird + ", 20" + sFirst + ",&nbsp;" + sFourth + ":" + sFifth + ":" + sSixth + "  <INPUT TYPE=submit VALUE='  Change  '></P>"; // format June 3, 2016, 14:20:34
   s += "</FORM>";
   
   // get energy usage
@@ -1767,7 +1769,7 @@ void handleHome() {
       no_current_display = 1;
       break;
     case 3:
-      sFirst = "<SPAN STYLE='background-color: #0032FF'><FONT color=FFFFFF> charging&nbsp;</FONT></SPAN>&nbsp;for ";    // vehicle state C - blue
+      sFirst = "<SPAN STYLE='background-color: #0032FF'><FONT COLOR=FFFFFF> charging&nbsp;</FONT></SPAN>&nbsp;for ";    // vehicle state C - blue
       sFirst += minutes_charging;
       if (minutes_charging == 1)
         sFirst += " minute";
@@ -1779,27 +1781,27 @@ void handleHome() {
       display_connected_indicator = 1;
       break;
     case 5:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF> ERROR, diode check failed&nbsp;</FONT></SPAN>";  // red for erros
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT COLOR=FFFFFF> ERROR, diode check failed&nbsp;</FONT></SPAN>";  // red for erros
       display_connected_indicator = 1;
       break;
     case 6:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF> ERROR, GFCI fault&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT COLOR=FFFFFF> ERROR, GFCI fault&nbsp;</FONT></SPAN>";
       display_connected_indicator = 1;
       break;
     case 7:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF> ERROR, bad ground&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT COLOR=FFFFFF> ERROR, bad ground&nbsp;</FONT></SPAN>";
       display_connected_indicator = 1;
       break;
     case 8:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF> ERROR, stuck contactor&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT COLOR=FFFFFF> ERROR, stuck contactor&nbsp;</FONT></SPAN>";
       display_connected_indicator = 1;
       break;
     case 9:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF> ERROR, GFI self&#45;test failure&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT COLOR=FFFFFF> ERROR, GFI self&#45;test failure&nbsp;</FONT></SPAN>";
       display_connected_indicator = 1;
       break;
     case 10:
-      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT color=FFFFFF> ERROR, over temp shutdown&nbsp;</FONT></SPAN>";
+      sFirst = "<SPAN STYLE='background-color: #FF0000'><FONT COLOR=FFFFFF> ERROR, over temp shutdown&nbsp;</FONT></SPAN>";
       display_connected_indicator = 1;
       break;
     case 254:
@@ -1922,14 +1924,14 @@ void handleHome() {
     s += "<P>&nbsp;&nbsp;&nbsp;start at " + sStart_hour + ":" + sStart_min + "</P>";
     s += "<P>&nbsp;&nbsp;&nbsp;stop at " + sStop_hour + ":" + sStop_min + "</P>";
     s += "<TABLE><TR>";
-    s += "<TD><INPUT TYPE=SUBMIT VALUE='      Change      '></TD>";
+    s += "<TD><INPUT TYPE=submit VALUE='      Change      '></TD>";
     s += "</FORM><FORM ACTION='startimmediatelyR'>";
-    s += "<TD><INPUT TYPE=SUBMIT VALUE='Start Now/Turn OFF'></TD>";
+    s += "<TD><INPUT TYPE=submit VALUE='Start Now/Turn OFF'></TD>";
     s += "</FORM>";
     s += "</TR></TABLE>";
   }
   else {
-    s += "OFF&nbsp;&nbsp;<INPUT TYPE=SUBMIT VALUE='   Turn ON   '></P>";
+    s += "OFF&nbsp;&nbsp;<INPUT TYPE=submit VALUE='   Turn ON   '></P>";
     s += "</FORM>";
   }
   //get time limit
@@ -1947,29 +1949,29 @@ void handleHome() {
   s += "<P>Limits for this session (first to reach):</P>";
   s += "<FORM METHOD='get' ACTION='homeR'>";
   s += "<P>&nbsp;&nbsp;&nbsp;time limit is set to ";
-  s += "<SELECT name='timelimit'>";
+  s += "<SELECT NAME='timelimit'>";
   int found_default = 0;  //used if current default setting doesn't match drop down for cases if changed via RAPI command
   for (int index = 0; index <= TIME_LIMIT_MAX; ++index) {   // drop down at 30 min increments
      if (index == 0 ) {
        if (first == 0) {
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + "no limit</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + "no limit</OPTION>";
          found_default = 1;
        }
        else
-         s += "<OPTION value='" + String(index) + "'>" +  "no limit</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'>" +  "no limit</OPTION>";
      }
      else {
        if (first == (index*2)) {
-         s += "<OPTION value='" + String(index*2) + "'SELECTED>";
+         s += "<OPTION VALUE='" + String(index*2) + "'SELECTED>";
          found_default = 1;
        }
        else
-         s += "<OPTION value='" + String(index*2) + "'>";
+         s += "<OPTION VALUE='" + String(index*2) + "'>";
        s += String(index * 30) + "</OPTION>";
      }
   }
   if (!found_default)
-    s += "<OPTION value='" + sFirst + "'SELECTED>" + String(first*15) + "</OPTION>";
+    s += "<OPTION VALUE='" + sFirst + "'SELECTED>" + String(first*15) + "</OPTION>";
   s += "</SELECT> minutes</P>";
   
   // get energy limit
@@ -1985,27 +1987,27 @@ void handleHome() {
     }
   }
   s += "<P>&nbsp;&nbsp;&nbsp;charge limit is set to ";
-  s += "<SELECT name='chargelimit'>";
+  s += "<SELECT NAME='chargelimit'>";
   found_default = 0;  //used if current default setting doesn't match drop down for cases if changed via RAPI command
   for (int index = 0; index <= CHARGE_LIMIT_MAX; ++index) {
      if (index == 0 ) {
        if (first == 0) {
          found_default = 1;
-         s += "<OPTION value='" + String(index) + "'SELECTED>" + "no limit</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + "no limit</OPTION>";
        }
        else
-         s += "<OPTION value='" + String(index) + "'>" +  "no limit</OPTION>";
+         s += "<OPTION VALUE='" + String(index) + "'>" +  "no limit</OPTION>";
      }
      else
        if (first == (index*2))  {
          found_default = 1;
-         s += "<OPTION value='" + String(index*2) + "'SELECTED>" + String(index*2) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index*2) + "'SELECTED>" + String(index*2) + "</OPTION>";
        }
        else
-         s += "<OPTION value='" + String(index*2) + "'>" + String(index*2) + "</OPTION>";
+         s += "<OPTION VALUE='" + String(index*2) + "'>" + String(index*2) + "</OPTION>";
   }
   if (!found_default)
-    s += "<OPTION value='" + sFirst + "'SELECTED>" + sFirst + "</OPTION>";
+    s += "<OPTION VALUE='" + sFirst + "'SELECTED>" + sFirst + "</OPTION>";
   s += "</SELECT> kWh</P>";
 
   //get min max current allowable
@@ -2025,30 +2027,30 @@ void handleHome() {
   }
   //get pilot setting
   s += "<P>Max current is ";
-  s += "<SELECT name='maxcurrent'>";
+  s += "<SELECT NAME='maxcurrent'>";
   found_default = 0;  //used if current default setting doesn't match drop down for cases if changed via RAPI command
   if (evse_flag & 0x0001) {                                  // service level flag 1 = level 2, 0 - level 1
    for (int index = minamp; index <= maxamp; index+=2) {
      if (index == pilotamp) {
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
        found_default = 1;
      }
      else
-       s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + String(index) + "</OPTION>";
     }
   }
   else {
     for (int index = minamp; index <= maxamp; ++index)  {
      if (index == pilotamp) {
-       s += "<OPTION value='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'SELECTED>" + String(index) + "</OPTION>";
        found_default = 1;
      }
      else
-       s += "<OPTION value='" + String(index) + "'>" + String(index) + "</OPTION>";
+       s += "<OPTION VALUE='" + String(index) + "'>" + String(index) + "</OPTION>";
     }
   }
   if (!found_default)
-    s += "<OPTION value='" + String(pilotamp) + "'SELECTED>" + String(pilotamp) + "</OPTION>";
+    s += "<OPTION VALUE='" + String(pilotamp) + "'SELECTED>" + String(pilotamp) + "</OPTION>";
   s += "</SELECT>&nbsp;A</P>";
   s += "<P>EVSE: <INPUT TYPE='radio' NAME='evse' VALUE='enable' ";
   if (!evse_disabled && !sleep)
@@ -2060,21 +2062,21 @@ void handleHome() {
   if (sleep)
     s += "CHECKED ";
   s += ">sleep <INPUT TYPE='radio' NAME='evse' VALUE='reset' ";
-  s += ">reset </FONT></FONT></P>";
+  s += ">reset </P>";
   s += "&nbsp;<TABLE><TR>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Submit    '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Submit    '></TD>";
   s += "</FORM>";
   s += "<FORM ACTION='advanced'>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='   Advanced   '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='   Advanced   '></TD>";
   s += "</FORM>";
   s += "<FORM ACTION='.'>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='WiFi Configuration'></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='WiFi Configuration'></TD>";
   s += "</FORM>";
   s += "<FORM ACTION='rapi'>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='     RAPI     '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='     RAPI     '></TD>";
   s += "</FORM>";
   s += "<FORM ACTION='home'>";
-  s += "<TD><INPUT TYPE=SUBMIT VALUE='    Cancel    '></TD>";
+  s += "<TD><INPUT TYPE=submit VALUE='    Cancel    '></TD>";
   s += "</FORM>";
   s += "</TR></TABLE>";
   if (status_path != 0 && wifi_mode == 0) {
@@ -2083,7 +2085,7 @@ void handleHome() {
     s += status_path;
     s += "'>Dashboard</A></P>";
   }
-  s += "</HTML>";
+  s += "</FONT></FONT></HTML>";
   s += "\r\n\r\n";
   //Serial.println("sending page...");
   server.send(200, "text/html", s);
@@ -2153,11 +2155,11 @@ void setup() {
   int n = WiFi.scanNetworks();
   Serial.print(n);
   Serial.println(" networks found");
-  st = "<SELECT name='ssid'>";
+  st = "<SELECT NAME='ssid'>";
   int found_match = 0;
   delay(1000);
   for (int i = 0; i < n; ++i) {
-    st += "<OPTION value='";
+    st += "<OPTION VALUE='";
     st += String(WiFi.SSID(i)) + "'";
     if (String(WiFi.SSID(i)) == esid.c_str()) {
       found_match = 1;
@@ -2169,13 +2171,13 @@ void setup() {
   }
   if (!found_match)
     if (esid != 0) {
-      st += "<OPTION value='" + esid + "'SELECTED>" + esid + "</OPTION>";
+      st += "<OPTION VALUE='" + esid + "'SELECTED>" + esid + "</OPTION>";
     }
     else {
       if (!n)
-        st += "<OPTION value='not chosen'SELECTED> No Networks Found!  Select Rescan or Manually Enter SSID</OPTION>";
+        st += "<OPTION VALUE='not chosen'SELECTED> No Networks Found!  Select Rescan or Manually Enter SSID</OPTION>";
       else
-        st += "<OPTION value='not chosen'SELECTED> Choose One </OPTION>";
+        st += "<OPTION VALUE='not chosen'SELECTED> Choose One </OPTION>";
     }
   st += "</SELECT>";
   delay(100);
@@ -2213,10 +2215,10 @@ void setup() {
           //Serial.print(n);
           //Serial.println(" networks found");
           delay(1000);
-          st = "<SELECT name='ssid'><OPTION value='not chosen'SELECTED> Try again </OPTION>";
+          st = "<SELECT NAME='ssid'><OPTION VALUE='not chosen'SELECTED> Try again </OPTION>";
           esid = ""; // clears out esid in case only the password is incorrect-used only to display the right instructions to user
           for (int i = 0; i < n; ++i) {
-            st += "<OPTION value='";
+            st += "<OPTION VALUE='";
             st += String(WiFi.SSID(i)) + "'> " + String(WiFi.SSID(i));
             st += " </OPTION>";
           }
@@ -2306,7 +2308,7 @@ void loop() {
     buttonState = digitalRead(0);
     erase++;
     if (erase >= 15000) {  //increased the hold down time before erase
-      ResetEEPROM(0, SSID_MAX_LENGTH + PASS_MAX_LENGTH); // only want to erase ssid and password
+      resetEEPROM(0, SSID_MAX_LENGTH + PASS_MAX_LENGTH); // only want to erase ssid and password
       int erase = 0;
       WiFi.disconnect();
       Serial.print("Finished...");
