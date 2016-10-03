@@ -31,7 +31,7 @@
 #include <EEPROM.h>
 #include <ArduinoOTA.h>
 
-#define VERSION "1.2.1"
+#define VERSION "1.2.2"
 
 // for EEPROM map
 #define EEPROM_SIZE 512
@@ -225,7 +225,7 @@ void notificationUpdate() {
       // calculate current time
       getRapiDateTime();
       int total_minutes = hour*60 + minutes;
-      if (total_minutes > (23*60 + 55)) {
+      if (total_minutes > (23*60 + 54)) {
         notify_P_reset_occurred = 1;
         notify_C_reset_occurred = 1;
         saveNotifyFlags();
@@ -462,7 +462,9 @@ void sendNotifyData(int p_type, int c_type) {
 
 void handleRescan() {
   String s;
-  s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B></FONT><P><FONT FACE='Arial'><B><Open Source Hardware</P></B><P><FONT SIZE=4>Rescanning...</P>";
+  s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B></FONT>";
+  s += "<P><FONT FACE='Arial'><B>Open Source Hardware</B></P>";
+  s += "<P><FONT SIZE=4>Rescanning...</P>";
   s += "<P>Note.  You may need to manually reconnect to the access point after rescanning.</P>";  
   s += "<P><B>Please wait at least 30 seconds before continuing.</B></P>";
   s += "<FORM ACTION='.'>";  
@@ -477,7 +479,8 @@ void handleRescan() {
 
 void handleCfm() {
   String s;
-  s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B><FONT FACE='Arial'> Confirmation</FONT></FONT><P><FONT FACE='Arial'><B>Open Source Hardware</P></B>";
+  s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B><FONT FACE='Arial'> Confirmation</FONT></FONT>";
+  s += "<P><FONT FACE='Arial'><B>Open Source Hardware</B></P>";
   s += "<P>You are about to erase the WiFi and notification settings and external link to your dashboard!</P>";
   s += "<FORM ACTION='reset'>";
   s += "&nbsp;<TABLE><TR>";
@@ -495,7 +498,8 @@ void handleRoot() {
   String s;
   String sTmp;
   //Serial.println("inside root");
-  s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><b>EVSE</B><FONT FACE='Arial'> WiFi Configuration</B></FONT></FONT><P><FONT FACE='Arial'><B>Open Source Hardware</B></P>";
+  s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><b>EVSE</B><FONT FACE='Arial'> WiFi Configuration</B></FONT></FONT>";
+  s += "<P><FONT FACE='Arial'><B>Open Source Hardware</B></P>";
   s += "<P><FONT SIZE=2>WiFi FW v";
   s += VERSION;
   s += "</FONT></P><FONT SIZE=4>";
@@ -625,15 +629,21 @@ void handleRoot() {
 
 void handleRapi() {
   String s;
-  s = "<html><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B></FONT><P><FONT FACE='Arial'><B>Open Source Hardware</B><P>Send RAPI Command<p>Common Commands:<P>Set Current - $SC XX<P>Set Service Level - $SL 1 - $SL 2 - $SL A<P>Get Real-time Current - $GG<P>Get Temperatures - $GP<P>";
+  s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B><FONT FACE='Arial'> Send RAPI Command</FONT></FONT>";
+  s += "<P><FONT FACE='Arial'><B>Open Source Hardware</B></P>";
+  s += "<P>Common Commands</P>";
+  s += "<P>Set Current - $SC XX</P>";
+  s += "<P>Set Service Level - $SL 1 - $SL 2 - $SL A</P>";
+  s += "<P>Get Real-time Current - $GG</P>";
+  s += "<P>Get Temperatures - $GP</P>";
   s += "<P>";
-  s += "<FORM METHOD='get' ACTION='r'><LABEL><B><i>RAPI Command:</B></I></LABEL><INPUT NAME='rapi' MAXLENGTH='32'><P>";
-  s += "&nbsp;<TABLE><TR>";
+  s += "<P><FORM METHOD='get' ACTION='r'><LABEL><B><i>RAPI Command:</B></I></LABEL><INPUT NAME='rapi' MAXLENGTH='32'></P>";
+  s += "<P>&nbsp;<TABLE><TR>";
   s += "<TD><INPUT TYPE=submit VALUE='    Submit    '></TD>";
   s += "</FORM><FORM ACTION='home'>";
   s += "<TD><INPUT TYPE=submit VALUE='    Home   '></TD>";
   s += "</FORM>";
-  s += "</TR></TABLE>";
+  s += "</TR></TABLE></P>";
   s += "</FONT></HTML>\r\n\r\n";
   server.send(200, "text/html", s);
 }
@@ -650,19 +660,25 @@ void handleRapiR() {
        while (Serial.available()) {
          rapiString = Serial.readStringUntil('\r');
        }    
-   s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B></FONT><P><FONT FACE='Arial'><B>Open Source Hardware</B><P>RAPI Command Sent<P>Common Commands:<P>Set Current - $SC XX<P>Set Service Level - $SL 1 - $SL 2 - $SL A<P>Get Real-time Current - $GG<P>Get Temperatures - $GP<P>";
-   s += "<p>";
-   s += "<FORM METHOD='get' ACTION='r'><LABEL><B><I>RAPI Command:</B></I></LABEL><INPUT NAME='rapi' MAXLENGTH='32'><P>";
-   s += "&nbsp;<TABLE><TR>";
+   s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B><FONT FACE='Arial'> RAPI Command Sent</FONT></FONT>";
+   s += "<P><FONT FACE='Arial'><B>Open Source Hardware</B></P>";
+   s += "<P>Common Commands</P>";
+   s += "<P>Set Current - $SC XX</P>";
+   s += "<P>Set Service Level - $SL 1 - $SL 2 - $SL A</P>";
+   s += "<P>Get Real-time Current - $GG</P>";
+   s += "<P>Get Temperatures - $GP</P>";
+   s += "<P>";
+   s += "<P><FORM METHOD='get' ACTION='r'><LABEL><B><I>RAPI Command:</B></I></LABEL><INPUT NAME='rapi' MAXLENGTH='32'></P>";
+   s += "<P>&nbsp;<TABLE><TR>";
    s += "<TD><INPUT TYPE=SUBMIT VALUE='    Submit    '></TD>";
    s += "</FORM><FORM ACTION='home'>";
    s += "<TD><INPUT TYPE=SUBMIT VALUE='    Home   '></TD>";
    s += "</FORM>";
-   s += "</TR></TABLE>";
+   s += "</TR></TABLE></P>";
    s += rapi;
-   s += "<P>>";
+   s += "<P>";
    s += rapiString;
-   s += "<P></FONT></HTML>\r\n\r\n";
+   s += "</P></FONT></HTML>\r\n\r\n";
    server.send(200, "text/html", s);
 }
 
@@ -714,7 +730,9 @@ void handleCfg() {
   }
   if (qsid != "not chosen") {
     writeEEPROM(SSID_START, SSID_MAX_LENGTH, qsid);
-    s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B></FONT><P><FONT FACE='Arial'><B>Open Source Hardware</P></B><P><FONT SIZE=4>Updating Settings...</P>";
+    s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B></FONT>";
+    s += "<P><FONT FACE='Arial'><B>Open Source Hardware</B></P>";
+    s += "<P><FONT SIZE=4>Updating Settings...</P>";
     if (qsid != esid.c_str() || qpass != epass.c_str()) {
       s += "<P>Saved to Memory...</P>";
       s += "<P>The OpenEVSE will reset and try to join " + qsid + "</P>";
@@ -737,7 +755,9 @@ void handleCfg() {
     }
   }
   else {
-     s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B></FONT><P><FONT FACE='Arial'><B>Open Source Hardware</P></B><P><FONT SIZE=5>Warning. No network selected.";
+     s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B></FONT>";
+     s += "<P><FONT FACE='Arial'><B>Open Source Hardware</B></P>";
+     s += "<P><FONT SIZE=5>Warning. No network selected.</P>";
      s += "<P>All functions except data logging will continue to work.</P>";
      s += "<FORM ACTION='home'>";
      s += "<P><INPUT TYPE=submit VALUE='     OK     '></P>";
@@ -748,7 +768,9 @@ void handleCfg() {
 
 void handleRst() {
   String s;
-  s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B><FONT FACE='Arial'> WiFi Configuration<FONT SIZE=4><P><B>Open Source Hardware</B></P><P>Reset to Defaults:</P>";
+  s = "<HTML><FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE</B><FONT FACE='Arial'> WiFi Configuration<FONT SIZE=4>";
+  s += "<P><B>Open Source Hardware</B></P>";
+  s += "<P>Reset to Defaults:</P>";
   s += "<P>Clearing the EEPROM...</P>";
   s += "<P>The OpenEVSE will reset and have an IP address of 192.168.4.1</P>";
   s += "<P>After about 30 seconds, the OpenEVSE will activate the access point</P>";
@@ -791,7 +813,8 @@ void handleDelayTimer() {
   String sFourth = "0";
   String sFifth = "0";
   s = "<HTML>";
-  s += "<FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE </B><FONT FACE='Arial'>Set Delay Start Timer</FONT></FONT>";  
+  s += "<FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE </B><FONT FACE='Arial'>Set Delay Start Timer</FONT></FONT>";
+  s += "<P><FONT FACE='Arial'><FONT SIZE=4><B>Open Source Hardware</B></P>";
  //get delay start timer
   Serial.flush();
   Serial.println("$GD^27");
@@ -821,7 +844,7 @@ void handleDelayTimer() {
     }
   }
   s += "<FORM METHOD='get' ACTION='delaytimerR'>";
-  s += "<P><FONT FACE='Arial'><FONT SIZE=4>Start Time (hh:mm) - ";
+  s += "<P>Start Time (hh:mm) - ";
   s += " <SELECT NAME='starthour'>";
   for (index = 0; index <= 9; ++index) {
      if (index == start_hour)
@@ -924,11 +947,12 @@ void handleAdvanced() {
   String sFirst;
   String sSecond;
   s = "<HTML>";
-  s += "<FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE </B><FONT FACE='Arial'>Advanced</FONT></FONT><FONT FACE='Arial'>";
+  s += "<FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE </B><FONT FACE='Arial'>Advanced</FONT></FONT>";
+  s += "<P><FONT FACE='Arial'><FONT SIZE=4><B>Open Source Hardware</B></P>";
   //get EVSE flag and pilot
   int pilotamp = getRapiFlag();
   s += "<FORM METHOD='get' ACTION='advancedR'>";
-  s += "<P><FONT SIZE=4>Service level is set to <INPUT TYPE='radio' NAME='service_level' VALUE='auto'";
+  s += "<P>Service level is set to <INPUT TYPE='radio' NAME='service_level' VALUE='auto'";
   if (!(evse_flag & 0x0020)) // auto detect disabled flag
     s += " CHECKED";
   s += ">Auto Detect  <INPUT TYPE='radio' NAME='service_level' VALUE='1'";
@@ -1361,11 +1385,12 @@ void handleDateTime() {
   String s;
   int index = 0;
   s = "<HTML>";
-  s +="<FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE </B><FONT FACE='Arial'>Edit Date and Time";  
+  s +="<FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE </B><FONT FACE='Arial'>Edit Date and Time</FONT></FONT>";
+  s += "<P><FONT FACE='Arial'><FONT SIZE=4><B>Open Source Hardware</B></P>";
  //get date and time
   getRapiDateTime();
   s += "<FORM METHOD='get' ACTION='datetimeR'>";
-  s += "<P><FONT SIZE=4>Current Date is ";
+  s += "<P>Current Date is ";
   s += "<SELECT NAME='month'><OPTION VALUE='1'";
   if (month == 1)
     s += " SELECTED";
@@ -1609,7 +1634,8 @@ void handleHome() {
     }
   }
   s = "<HTML>";
-  s += "<FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE </B><FONT FACE='Arial'>Home</FONT></FONT><FONT FACE='Arial'>";
+  s += "<FONT SIZE=6><FONT COLOR=006666>Open</FONT><B>EVSE </B><FONT FACE='Arial'>Home</FONT></FONT>";
+  s += "<P><FONT FACE='Arial'><FONT SIZE=4><B>Open Source Hardware</B></P>";
   s += "<P><FONT SIZE=2>Main FW v" + sFirst + ",    RAPI v" + sSecond;
   s += ",   WiFi FW v";
   s += VERSION;
