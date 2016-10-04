@@ -12,7 +12,7 @@
 <p>-----------------------------------------------------------
 <p><img src="https://github.com/Energybrain/openevse-wifi-ui/blob/master/Set_delay_timer.jpeg">
 <p>-----------------------------------------------------------
-<P>This repository contains the source for both the OpenEVSE controller and ESP8266 WiFi module.  This is based off of the development version 4.3.2 from lincomatic/open_evse code (I've only included the modified files here, so you will need download the rest from lincomatic's repository at https://github.com/lincomatic/open_evse/tree/a4ec64b708b1461405699eb7a00aea509b77c08e and replace the like files with these and rebuild).  Also, you will need the WiFi module from openevse.com.</P>
+<P>This repository contains the source for both the OpenEVSE controller and ESP8266 WiFi module.  This is based off of the development version 4.3.2 from lincomatic/open_evse code (I've only included the modified files here, so you will need download the rest from lincomatic's repository at https://github.com/lincomatic/open_evse/tree/a4ec64b708b1461405699eb7a00aea509b77c08e and replace the like files with these and rebuild).  Also, you will need the WiFi module from <a href="http://openevse.com">openevse.com</a>.</P>
 <P>I used the development version because it has a nice feature for solar charging and control i.e. the pilot adjust has the option of not saving to EEPROM.</P>
 <P>Added a command to query the delay timer settings via RAPI in development version 4.3.2.  All UI code is done on the ESP8266 side.</P>
 <P>Version is left as is with a 'b' attached to it indicating my modifications. </P>
