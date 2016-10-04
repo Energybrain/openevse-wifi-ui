@@ -1,5 +1,17 @@
 # OpenEVSE-WiFi-esp8266-ui
-<P>A simple HTML only user interface for the OpenEVSE project based on the ESP8266 and RAPI commands.</P>
+<P>A simple HTML only user interface(UI) for the OpenEVSE project based on the ESP8266 and RAPI commands that will work with all browsers with or without a display for the OpenEVSE or internet connection.  This UI is full featured in that it will not only allow for status and full control of the OpenEVSE including modifying settings but also setting up the wireless module as an AP or STA and links to a database such as emoncms to create dashboards.  Below are some screen captures</P>
+<p><img src="https://github.com/Energybrain/openevse-wifi-ui/blob/master/Home.jpeg">
+<p>-----------------------------------------------------------
+<p><img src="https://github.com/Energybrain/openevse-wifi-ui/blob/master/Advanced.jpeg">
+<p>-----------------------------------------------------------
+<p><img src="https://github.com/Energybrain/openevse-wifi-ui/blob/master/Wifi_config.jpeg">
+<p>-----------------------------------------------------------
+<p><img src="https://github.com/Energybrain/openevse-wifi-ui/blob/master/Send_rapi.jpeg">
+<p>-----------------------------------------------------------
+<p><img src="https://github.com/Energybrain/openevse-wifi-ui/blob/master/Set_date_time.jpeg">
+<p>-----------------------------------------------------------
+<p><img src="https://github.com/Energybrain/openevse-wifi-ui/blob/master/Set_delay_timer.jpeg">
+<p>-----------------------------------------------------------
 <P>This repository contains the source for both the OpenEVSE controller and ESP8266 WiFi module.  This is based off of the development version 4.3.2 from lincomatic/open_evse code (I've only included the modified files here, so you will need download the rest from lincomatic's repository at https://github.com/lincomatic/open_evse/tree/a4ec64b708b1461405699eb7a00aea509b77c08e and replace the like files with these and rebuild).  Also, you will need the WiFi module from openevse.com.</P>
 <P>I used the development version because it has a nice feature for solar charging and control i.e. the pilot adjust has the option of not saving to EEPROM.</P>
 <P>Added a command to query the delay timer settings via RAPI in development version 4.3.2.  All UI code is done on the ESP8266 side.</P>
