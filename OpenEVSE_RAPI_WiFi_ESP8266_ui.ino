@@ -31,7 +31,7 @@
 #include <EEPROM.h>
 #include <ArduinoOTA.h>
 
-#define VERSION "1.2.2"
+#define VERSION "1.3"
 
 // for EEPROM map
 #define EEPROM_SIZE 512
@@ -121,6 +121,7 @@ const char* inputID_TEMP3  = "OpenEVSE_TEMP3:";
 const char* inputID_PILOT  = "OpenEVSE_PILOT:";
 const char* inputID_NOTIFY1 = "OpenEVSE_P_NOTIFY:";
 const char* inputID_NOTIFY2 = "OpenEVSE_C_NOTIFY:";
+const char* inputID_PLUGGED_IN = "OpenEVSE_PLUGGED_IN:";
 
 // for EVSE basic info
 int amp = 0;
@@ -136,6 +137,7 @@ int hour = 0;
 int minutes = 0;
 int seconds = 0;
 int evse_flag = 0;
+int plugged_in = 0;
 
 // for sending out notifications
 int plug_notify = 0;
@@ -214,6 +216,9 @@ void notificationUpdate() {
       // get current state
       int vflag = getRapiVolatile();
       int evse_state = getRapiEVSEState();
+      plugged_in = vflag & PLUG_IN_MASK;
+      if (plugged_in > 0)
+        plugged_in = 1;
       if (notify_P_reset_occurred && !p_ready){
         p_ready = 1;
         saveNotifyFlags();
@@ -246,7 +251,7 @@ void notificationUpdate() {
           saveNotifyFlags();
         }
         if (p_notify_sent && ((millis()- start_sent_timer_p) > (plug_repeat * 5 * 60000)) && (plug_repeat != 0)) {
-          if (!(vflag & PLUG_IN_MASK)) {
+          if (!plugged_in) {
             start_sent_timer_p = millis();
             p_reminders++;
             if (p_reminders > MAX_REMINDERS) {   // send max reminders
@@ -2355,7 +2360,6 @@ void loop() {
       delay(50);
      }
   }
-    
   notificationUpdate();
   if (wifi_mode == 0 && privateKey != 0) { 
     if ((millis() - Timer) >= SERVER_UPDATE_RATE) {
@@ -2381,6 +2385,9 @@ void loop() {
       url_temp3 += ","; 
       String url_pilot = inputID_PILOT;
       url_pilot += pilot;
+      url_pilot += ",";
+      String url_plugged_in = inputID_PLUGGED_IN;
+      url_plugged_in += plugged_in;
       tmp = e_url;
       tmp += node; 
       tmp += "&json={"; 
@@ -2398,7 +2405,7 @@ void loop() {
         tmp += url_temp3;
       }
       tmp += url_pilot;
-    
+      tmp += url_plugged_in;  
       tmp += "}&"; 
       url = directory.c_str();   //needs to be constant character to filter out control characters padding when read from memory
       url += tmp;
